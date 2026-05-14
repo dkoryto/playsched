@@ -36,6 +36,12 @@ def _get_auth_manager():
     )
 
 
+def refresh_access_token(refresh_token):
+    """Refreshes a Spotify access token using the refresh token."""
+    auth_manager = _get_auth_manager()
+    return auth_manager.refresh_access_token(refresh_token)
+
+
 def get_auth_url():
     """Gets the Spotify authorization URL."""
     return _get_auth_manager().get_authorize_url()

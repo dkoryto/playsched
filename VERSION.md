@@ -1,5 +1,24 @@
 # PlaySched Version History
 
+## 0.3.0 - 14 May 2026 - Shared Libraries & DB Token Cache
+
+* **Shared Libraries (Priority 1.1):**
+  * Extracted all CLI business logic into `services.py` (~390 lines): playback history, playlist sync, data export.
+  * `play_spotify_playlist.py` slimmed down from ~910 to ~130 lines — now a thin CLI wrapper.
+  * `spotify_client.py` wrappers (`get_user_devices`, `get_all_user_playlists`, `start_playback`) are reused by both CLI and web app.
+  * Removed `current_app` dependency from `spotify_client.py` for CLI compatibility.
+* **Token Cache in Database (Priority 1.2):**
+  * New `user_tokens` SQLite table replaces `.spotify_token_cache.json`.
+  * `spotify_client.py` rewritten: `get_token_from_code()` saves to DB; `get_refreshed_token()` reads from DB and refreshes via `SpotifyOAuth`; `get_spotify_client_for_user(user_id)` for scheduler/CLI.
+  * `scheduler.py` fetches tokens from DB instead of file cache.
+  * CLI now requires `--user-id` and reads tokens from DB. Added `--list-users` flag.
+* **Toast Notifications:**
+  * Replaced blocking `alert("Playback initiated")` popups with non-intrusive toast banners (success/info/error types, auto-dismiss after 3s).
+* **Bug Fixes:**
+  * Fixed duplicated `except` blocks in `scheduler.py` (unreachable code).
+  * Removed stale `HISTORY_DB_FILE` from `.env-sample`.
+  * Updated `README.md` and `README_PL.md` with new repo link, CLI `--user-id` usage, troubleshooting tables, and v0.3.0 version.
+
 ## 0.2.0 - 14 May 2026 - UI/UX Overhaul & New Features
 
 * **Immediate Stop Playback:** Added "⏹ Stop Now" button to each schedule in the Scheduled Playlists tab, allowing instant pause of playback on the schedule's target device. Endpoint: `POST /api/schedules/<id>/stop_now`.

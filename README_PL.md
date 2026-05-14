@@ -4,7 +4,7 @@
 
 ![Ikona Aplikacji](static/android-chrome-192x192.png)
 
-[Historia Wersji](VERSION.md) – Aktualna Wersja: v0.2.0 – 14 maja 2026
+[Historia Wersji](VERSION.md) – Aktualna Wersja: v0.3.0 – 14 maja 2026
 
 [Plan Rozwoju](ROADMAP.md)
 
@@ -21,7 +21,7 @@ Aplikacja będzie się rozwijać z czasem. Obecnie rozwiązuje jeden konkretny p
 
 ### Funkcje Aplikacji Webowej (`playsched.py`)
 
-* **Uwierzytelnianie Spotify:** Bezpieczne logowanie za pomocą konta Spotify (OAuth 2.0).
+* **Uwierzytelnianie Spotify:** Bezpieczne logowanie za pomocą konta Spotify (OAuth 2.0). Tokeny są teraz przechowywane w bazie danych SQLite (tabela `user_tokens`), co umożliwia obsługę wielu użytkowników i eliminuje konflikty pliku cache.
 * **Przeglądanie Playlist:** Przeglądanie i filtrowanie playlist Spotify.
 * **Lista Urządzeń:** Automatyczne wykrywanie dostępnych urządzeń Spotify Connect.
 * **Harmonogramowanie:**
@@ -42,6 +42,7 @@ Aplikacja będzie się rozwijać z czasem. Obecnie rozwiązuje jeden konkretny p
 * **Widget Teraz Gra:** Dynamiczne wyświetlanie aktualnie odtwarzanego utworu (tytuł, wykonawca, okładka albumu, pasek postępu z czasem), nazwy aktywnego urządzenia oraz następnego utworu w kolejce. Odświeża się automatycznie co 5 sekund.
 * **Zegar na Żywo:** Aktualna data i godzina wyświetlane wyraźnie w nagłówku, z sekundowym odświeżaniem i czytelną czcionką monospace.
 * **Motyw Ciemny:** Pełny przełącznik motywu ciemnego/jasnego z wykrywaniem preferencji systemowych i zapisywaniem w `localStorage`.
+* **Powiadomienia Toast:** Nieinwazyjne komunikaty sukcesu/info zamiast blokujących popupów `alert()`.
 * **Harmonogram w Tle:** Używa APScheduler do automatycznego uruchamiania/zatrzymywania odtwarzania zgodnie z zdefiniowanymi harmonogramami.
 
 ### Funkcje Skryptu Wiersza Poleceń (`play_spotify_playlist.py`)
@@ -60,6 +61,7 @@ Aplikacja będzie się rozwijać z czasem. Obecnie rozwiązuje jeden konkretny p
 * **Eksport Danych:**
     * Eksportuje zsynchronizowane playlisty i utwory z lokalnej bazy danych.
     * Wspiera eksport do Excela (`.xlsx` z osobnymi arkuszami dla playlist i utworów), CSV (generuje dwa pliki: `*_playlists.csv` i `*_tracks.csv`) lub JSON (`.json` ze strukturą danych).
+* **Obsługa Wielu Użytkowników (DB):** CLI wymaga argumentu `--user-id`. Tokeny są pobierane ze wspólnej bazy danych (wypełnionej przez logowanie w aplikacji webowej).
 
 ![Przeglądanie Playlist](img/screenshot-browse-playlists.jpg)
 
@@ -99,7 +101,7 @@ Aby umożliwić tej aplikacji interakcję z Twoim kontem Spotify, musisz ją zar
 
 1.  **Sklonuj Repozytorium:**
     ```bash
-    git clone https://github.com/storizzi/playsched
+    git clone https://github.com/dkoryto/playsched
     cd playsched
     ```
 
@@ -151,13 +153,15 @@ Aplikacja używa zmiennych środowiskowych ładowanych z pliku `.env` w główny
 
     # Ustawienia Wspólne (Wymagane)
     SCHEDULE_DB_FILE='playsched.db'
-    SPOTIPY_CACHE_PATH='.spotify_token_cache.json'
+    # PRZESTARZAŁE: SPOTIPY_CACHE_PATH nie jest już używane przez aplikację webową ani scheduler.
+    # Tokeny są teraz przechowywane w bazie danych (tabela user_tokens).
+    # SPOTIPY_CACHE_PATH='.spotify_token_cache.json'
     SCHEDULER_INTERVAL_SECONDS=15
     SCHEDULER_TIMEZONE='UTC'
 
     # Certyfikaty SSL dla HTTPS
-    FLASK_CERT_FILE=localhost.crt
-    FLASK_KEY_FILE=localhost.key
+    # FLASK_CERT_FILE=localhost.crt
+    # FLASK_KEY_FILE=localhost.key
     ```
 
 ## HTTPS dla Lokalnego Rozwoju
@@ -211,10 +215,18 @@ python playsched.py
 
 Otwórz przeglądarkę i przejdź do `https://127.0.0.1:9093`.
 
+**Zaloguj się przez Spotify** w interfejsie webowym. To zapisze token uwierzytelniania w bazie danych (tabela `user_tokens`), udostępniając go schedulerowi i CLI.
+
 ### Uruchamianie Skryptu Wiersza Poleceń
 
+CLI pobiera teraz tokeny z bazy danych (nie z pliku cache). Musisz zalogować się przez aplikację webową przynajmniej raz przed użyciem komend CLI wymagających autoryzacji Spotify.
+
 ```bash
-python play_spotify_playlist.py --help
+# Lista użytkowników z zapisanymi tokenami
+python play_spotify_playlist.py --list-users
+
+# Przykład: lista urządzeń
+python play_spotify_playlist.py --user-id TWÓJ_USER_ID --list-devices
 ```
 
 ## Użytkowanie
@@ -228,25 +240,27 @@ python play_spotify_playlist.py --help
 
 ### Użytkowanie Skryptu Wiersza Poleceń
 
-* Lista dostępnych urządzeń:
+Wszystkie akcje wymagające autoryzacji Spotify potrzebują `--user-id`.
+
+* **Lista dostępnych urządzeń:**
     ```bash
-    python play_spotify_playlist.py --list-devices
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --list-devices
     ```
-* Lista playlist:
+* **Lista playlist:**
     ```bash
-    python play_spotify_playlist.py --list-playlists
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --list-playlists
     ```
-* Aktualizacja lokalnej historii odtwarzania:
+* **Aktualizacja lokalnej historii odtwarzania:**
     ```bash
-    python play_spotify_playlist.py --update-history
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --update-history
     ```
-* Ostatnio odtwarzane playlisty z lokalnej bazy:
+* **Ostatnio odtwarzane playlisty z lokalnej bazy:**
     ```bash
-    python play_spotify_playlist.py --recent-playlists
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --recent-playlists
     ```
 * **Synchronizuj wszystkie playlisty do lokalnej bazy:**
     ```bash
-    python play_spotify_playlist.py --sync-playlists
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --sync-playlists
     ```
 * **Eksportuj zsynchronizowane dane:**
     ```bash
@@ -259,10 +273,50 @@ python play_spotify_playlist.py --help
     # Eksport do JSON
     python play_spotify_playlist.py --export-data moje_dane_spotify.json
     ```
-* Odtwórz playlistę na konkretnym urządzeniu:
+    *Uwaga: Eksport nie wymaga `--user-id`, ponieważ czyta tylko z lokalnej bazy danych.*
+* **Odtwórz playlistę na konkretnym urządzeniu:**
     ```bash
-    python play_spotify_playlist.py --device "Moje Głośniki" --playlist "Chill Mix"
+    python play_spotify_playlist.py --user-id TWÓJ_USER_ID --device "Moje Głośniki" --playlist "Chill Mix"
     ```
+
+## Rozwiązywanie Problemów (Troubleshooting)
+
+### Problemy z Aplikacją Webową / Logowaniem
+
+| Objaw | Przyczyna | Rozwiązanie |
+|-------|-----------|-------------|
+| `SpotifyOAuth initialized...` logowane wielokrotnie | Normalny log przy starcie, nie błąd | Zignoruj |
+| „Authentication failed" lub pętla przekierowań po logowaniu | Niezgodność `SPOTIPY_REDIRECT_URI` | Upewnij się, że dokładnie pasuje do Redirect URI w Spotify Dashboard (wraz z `https://` i `/callback`) |
+| Przeglądarka pokazuje „Your connection is not private" | Nietrustowany certyfikat self-signed | Zaufaj `myCA.pem` w przeglądarce (patrz sekcja HTTPS) lub użyj trybu adhoc i kliknij „Proceed" |
+| Scheduler nie uruchamia odtwarzania | Brak tokena w DB dla użytkownika | Zaloguj się przez aplikację webową. Sprawdź `--list-users` w CLI, aby zweryfikować istnienie tokena |
+| Scheduler nie uruchamia odtwarzania | Urządzenie offline / nieaktywne | Upewnij się, że Spotify jest otwarte na docelowym urządzeniu i pojawia się na liście urządzeń |
+| „Error: Could not set volume" | Urządzenie nie obsługuje kontroli głośności | Sprawdź, czy urządzenie to głośnik Spotify Connect, a nie web player |
+
+### Problemy z CLI
+
+| Objaw | Przyczyna | Rozwiązanie |
+|-------|-----------|-------------|
+| `Error: --user-id is required` | CLI teraz wymaga jawnego user ID | Zaloguj się przez aplikację webową, potem uruchom `--list-users`, aby znaleźć swój ID |
+| `No token found in database for user '...'` | Użytkownik nie zalogował się przez aplikację webową | Otwórz aplikację webową i kliknij „Login with Spotify" |
+| `Error refreshing token...` | Refresh token unieważniony lub wygasł | Zaloguj się ponownie przez aplikację webową, aby wygenerować nowe tokeny |
+| `No active Spotify devices found` | Spotify nie działa na docelowym urządzeniu | Otwórz Spotify na urządzeniu, na którym chcesz odtwarzać |
+| Eksport kończy się błędem pandas | Brak opcjonalnych zależności | Uruchom `pip install pandas openpyxl` |
+
+### Problemy z Bazą Danych / Plikami
+
+| Objaw | Przyczyna | Rozwiązanie |
+|-------|-----------|-------------|
+| `Database tables checked/created.` | Normalny log przy pierwszym uruchomieniu | Zignoruj |
+| Plik `.cache` się pojawia | Legacy cache Spotipy | Bezpiecznie usunąć. Dodaj `.cache` do `.gitignore` |
+| Plik `.spotify_token_cache.json` nadal istnieje | Pozostałość po v0.2.x | Bezpiecznie usunąć po jednokrotnym zalogowaniu przez aplikację webową (tokeny są teraz w DB) |
+
+### Problemy z Schedulerem / Zadaniami w Tle
+
+| Objaw | Przyczyna | Rozwiązanie |
+|-------|-----------|-------------|
+| Harmonogram uruchamia się wielokrotnie na minutę | `SCHEDULER_INTERVAL_SECONDS` jest zbyt niskie, a zadanie trwa dłużej niż interwał | Domyślne 15s jest w porządku; sprawdź logi pod kątem czasu trwania zadania |
+| „Skipping pause - playback is active, but not on target device" | Niezgodność ID urządzenia lub użytkownik zmienił urządzenie | Upewnij się, że zaplanowane ID urządzenia pasuje do aktualnie aktywnego urządzenia |
+| Niezgodność stanu shuffle w logach | Eventual consistency API Spotify | Ostrzeżenie kosmetyczne; odtwarzanie działa poprawnie |
 
 ## Uwagi i Ograniczenia
 
@@ -270,8 +324,8 @@ python play_spotify_playlist.py --help
 * **Dostępność Urządzenia:** Odtwarzanie wymaga, aby docelowe urządzenie było online i aktywne w Spotify. Akcje zawiodą, jeśli urządzenie jest niedostępne.
 * **Precyzja Harmonogramu:** Zaplanowane zadania uruchamiają się na podstawie `SCHEDULER_INTERVAL_SECONDS`. Odtwarzanie może rozpocząć/zatrzymać się nieznacznie po dokładnej zaplanowanej minucie.
 * **Strefy Czasowe i DST:** Upewnij się, że używasz prawidłowych nazw stref czasowych (nazwy bazy TZ). Backend używa `pytz` do obsługi stref czasowych i DST.
-* **Pamięć Podręczna Tokena:** Plik `.spotify_token_cache.json` przechowuje token uwierzytelniania aplikacji webowej, używany przez harmonogram. Usunięcie wymaga ponownego logowania przez aplikację webową.
-* **Bazy Danych:** `playsched.db` przechowuje harmonogramy aplikacji webowej, historię CLI oraz zsynchronizowane playlisty/utwory. Wykonuj kopie zapasowe, jeśli potrzebujesz.
+* **Przechowywanie Tokenów:** Tokeny uwierzytelniania są przechowywane w tabeli `user_tokens` w SQLite (wewnątrz `SCHEDULE_DB_FILE`). Scheduler i CLI odczytują z tej tabeli. Stary plik `.spotify_token_cache.json` nie jest już używany przez główną aplikację.
+* **Bazy Danych:** `playsched.db` przechowuje harmonogramy aplikacji webowej, tokeny użytkowników, historię CLI oraz zsynchronizowane playlisty/utwory. Wykonuj kopie zapasowe, jeśli potrzebujesz.
 
 ## Wkład w Projekt
 

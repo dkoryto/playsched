@@ -1,5 +1,14 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, current_app
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    jsonify,
+    current_app,
+)
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
@@ -17,7 +26,9 @@ import scheduler  # Import the scheduler module containing the check function
 load_dotenv()
 
 # Basic logging setup
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 app = Flask(__name__)
 app.secret_key = os.getenv(
@@ -54,12 +65,16 @@ def calculate_next_play_time_utc(schedule, now_utc):
     logger = current_app.logger if current_app else logging.getLogger(__name__)
     schedule_id_log = schedule.get("id", "N/A")
 
-    logger.info(f"[Calc {schedule_id_log}]: --- Starting Calculation (REVISED LOGIC) ---")
+    logger.info(
+        f"[Calc {schedule_id_log}]: --- Starting Calculation (REVISED LOGIC) ---"
+    )
     logger.debug(f"[Calc {schedule_id_log}]: Input Schedule Data: {dict(schedule)}")
     logger.debug(f"[Calc {schedule_id_log}]: Current Time UTC: {now_utc.isoformat()}")
 
     if not isinstance(schedule, dict):
-        logger.error(f"[Calc {schedule_id_log}]: Invalid schedule format. Returning None.")
+        logger.error(
+            f"[Calc {schedule_id_log}]: Invalid schedule format. Returning None."
+        )
         return None
 
     is_active_val = schedule.get("is_active")
@@ -74,7 +89,9 @@ def calculate_next_play_time_utc(schedule, now_utc):
     play_once_triggered = schedule.get("play_once_triggered", False)
 
     if not tz_str or not start_time_str:
-        logger.warning(f"[Calc {schedule_id_log}]: Returning None - Missing timezone or start_time_local.")
+        logger.warning(
+            f"[Calc {schedule_id_log}]: Returning None - Missing timezone or start_time_local."
+        )
         return None
 
     if is_play_once and play_once_triggered:
@@ -87,12 +104,19 @@ def calculate_next_play_time_utc(schedule, now_utc):
         scheduled_days = set()
         if not is_play_once:
             if days_of_week_str:
-                scheduled_days = {int(day) for day in days_of_week_str.split(",") if day.strip()}
+                scheduled_days = {
+                    int(day) for day in days_of_week_str.split(",") if day.strip()
+                }
             else:
-                logger.warning(f"[Calc {schedule_id_log}]: Returning None - Repeating schedule has empty days_of_week.")
+                logger.warning(
+                    f"[Calc {schedule_id_log}]: Returning None - Repeating schedule has empty days_of_week."
+                )
                 return None
     except Exception as e:
-        logger.error(f"[Calc {schedule_id_log}]: Returning None - Error parsing schedule data: {e}", exc_info=True)
+        logger.error(
+            f"[Calc {schedule_id_log}]: Returning None - Error parsing schedule data: {e}",
+            exc_info=True,
+        )
         return None
 
     # Get current date in UTC to start iteration
@@ -129,8 +153,12 @@ def calculate_next_play_time_utc(schedule, now_utc):
             )
             continue
 
-        potential_dt_utc = localized_potential_dt.astimezone(pytz.utc)  # Convert localized time to UTC
-        potential_weekday_local = localized_potential_dt.weekday()  # Get weekday from the localized time
+        potential_dt_utc = localized_potential_dt.astimezone(
+            pytz.utc
+        )  # Convert localized time to UTC
+        potential_weekday_local = (
+            localized_potential_dt.weekday()
+        )  # Get weekday from the localized time
 
         logger.debug(
             f"[Calc {schedule_id_log}]: Checking Day {i}: DateUTC={check_date_utc}, "
@@ -151,7 +179,9 @@ def calculate_next_play_time_utc(schedule, now_utc):
             is_scheduled_day = True
 
         if not is_scheduled_day:
-            logger.debug(f"[Calc {schedule_id_log}]: Day {potential_weekday_local} is not scheduled.")
+            logger.debug(
+                f"[Calc {schedule_id_log}]: Day {potential_weekday_local} is not scheduled."
+            )
             continue
 
         # Compare potential UTC time directly with current UTC time
@@ -161,7 +191,9 @@ def calculate_next_play_time_utc(schedule, now_utc):
             )
             return potential_dt_utc  # Return the calculated UTC time
 
-        logger.debug(f"[Calc {schedule_id_log}]: Potential UTC time {potential_dt_utc.isoformat()} is in the past.")
+        logger.debug(
+            f"[Calc {schedule_id_log}]: Potential UTC time {potential_dt_utc.isoformat()} is in the past."
+        )
 
     logger.warning(
         f"[Calc {schedule_id_log}]: Returning None - Could not find valid future run time within 7 days (Revised Logic)."
@@ -177,7 +209,11 @@ def index():
     # Check if user is logged in via session
     if "spotify_user_id" not in session:
         return render_template("index.html", logged_in=False)
-    return render_template("index.html", logged_in=True, display_name=session.get("spotify_user_display_name", "User"))
+    return render_template(
+        "index.html",
+        logged_in=True,
+        display_name=session.get("spotify_user_display_name", "User"),
+    )
 
 
 @app.route("/login")
@@ -215,7 +251,8 @@ def before_request_hook():
     if (
         request.endpoint
         and "api." in request.endpoint
-        and request.endpoint not in ["api.get_auth_url", "api.callback", "api.auth_status"]
+        and request.endpoint
+        not in ["api.get_auth_url", "api.callback", "api.auth_status"]
     ):
         if "spotify_user_id" not in session:
             return jsonify({"error": "User not authenticated"}), 401
@@ -263,11 +300,15 @@ def api_get_playlists():
 
         # Return only essential info for the full list
         # No need for pagination info in the response itself now
-        playlist_data = [{"uri": p["uri"], "name": p["name"], "id": p["id"]} for p in playlists]
+        playlist_data = [
+            {"uri": p["uri"], "name": p["name"], "id": p["id"]} for p in playlists
+        ]
         return jsonify(playlist_data), 200  # Return the full array
 
     except Exception as e:
-        current_app.logger.error(f"Error in /api/playlists endpoint: {e}", exc_info=True)
+        current_app.logger.error(
+            f"Error in /api/playlists endpoint: {e}", exc_info=True
+        )
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -280,7 +321,15 @@ def api_get_devices():
     if devices is None:
         return jsonify({"error": "Failed to fetch devices"}), 500
     # Return essential info
-    device_data = [{"id": d["id"], "name": d["name"], "type": d["type"], "is_active": d["is_active"]} for d in devices]
+    device_data = [
+        {
+            "id": d["id"],
+            "name": d["name"],
+            "type": d["type"],
+            "is_active": d["is_active"],
+        }
+        for d in devices
+    ]
     return jsonify(device_data), 200
 
 
@@ -301,7 +350,9 @@ def api_get_schedules():
         next_time_obj = calculate_next_play_time_utc(schedule, now_utc)
         # Create a copy or new dict to avoid modifying original if needed elsewhere
         # Add the ISO formatted string to the dictionary being sent
-        schedule["_next_play_time_utc_iso"] = next_time_obj.isoformat() if next_time_obj else None
+        schedule["_next_play_time_utc_iso"] = (
+            next_time_obj.isoformat() if next_time_obj else None
+        )
         # Keep the object separate for sorting if preferred, or sort based on string
         schedule["_sort_obj"] = next_time_obj  # Keep object for sorting
         processed_schedules.append(schedule)
@@ -342,7 +393,13 @@ def api_add_schedule():
         return jsonify({"error": "Invalid request data"}), 400
 
     # ** Basic Validation (Add more robust validation) **
-    required_fields = ["playlist_uri", "target_device_id", "days_of_week", "start_time_local", "timezone"]
+    required_fields = [
+        "playlist_uri",
+        "target_device_id",
+        "days_of_week",
+        "start_time_local",
+        "timezone",
+    ]
     if not all(field in data for field in required_fields):
         return jsonify({"error": "Missing required fields"}), 400
 
@@ -351,7 +408,9 @@ def api_add_schedule():
     schedule_id = database.add_schedule(data)
 
     if schedule_id:
-        new_schedule = database.get_schedule_by_id(schedule_id, user_id)  # Fetch to return
+        new_schedule = database.get_schedule_by_id(
+            schedule_id, user_id
+        )  # Fetch to return
         return jsonify(new_schedule), 201  # 201 Created
     else:
         return jsonify({"error": "Failed to create schedule in database"}), 500
@@ -400,7 +459,9 @@ def api_delete_schedule(schedule_id):
             return jsonify({"error": "Failed to delete schedule"}), 500
 
 
-@app.route("/api/schedules/<int:schedule_id>/toggle", methods=["PUT"])  # Use PUT for state change
+@app.route(
+    "/api/schedules/<int:schedule_id>/toggle", methods=["PUT"]
+)  # Use PUT for state change
 def api_toggle_schedule(schedule_id):
     user_id = session.get("spotify_user_id")
     if not user_id:
@@ -437,7 +498,9 @@ def api_play_schedule_now(schedule_id):
     device_id = schedule_info["target_device_id"]
     playlist_uri = schedule_info["playlist_uri"]
     volume = schedule_info.get("volume")
-    shuffle_enabled = bool(schedule_info.get("shuffle_state", False))  # Get shuffle state
+    shuffle_enabled = bool(
+        schedule_info.get("shuffle_state", False)
+    )  # Get shuffle state
 
     app.logger.info(
         f"Manual Play Now for Schedule {schedule_id}: URI={playlist_uri}, Device={device_id}, Shuffle={shuffle_enabled}"
@@ -453,8 +516,12 @@ def api_play_schedule_now(schedule_id):
     }
     # *** ADD OFFSET if shuffle is OFF ***
     if not shuffle_enabled:
-        playback_params["offset"] = {"position": 0}  # Start at the first track (index 0)
-        app.logger.info("Setting playback offset to track 0 for manual play (Shuffle is OFF).")
+        playback_params["offset"] = {
+            "position": 0
+        }  # Start at the first track (index 0)
+        app.logger.info(
+            "Setting playback offset to track 0 for manual play (Shuffle is OFF)."
+        )
 
     # --- Call playback ---
     # OPTION A: If spotify_client.start_playback can handle offset:
@@ -474,16 +541,23 @@ def api_play_schedule_now(schedule_id):
             _time.sleep(0.5)  # Small delay
 
         # Start playback using the prepared parameters
-        app.logger.debug(f"Attempting sp.start_playback for manual play with params: {playback_params}")
+        app.logger.debug(
+            f"Attempting sp.start_playback for manual play with params: {playback_params}"
+        )
         sp.start_playback(**playback_params)
-        app.logger.info(f"Playback command sent for manual play (Schedule {schedule_id}).")
+        app.logger.info(
+            f"Playback command sent for manual play (Schedule {schedule_id})."
+        )
         success = True
     except SpotifyException as e:
-        app.logger.error(f"Spotify API error during manual playback start for schedule {schedule_id}: {e}")
+        app.logger.error(
+            f"Spotify API error during manual playback start for schedule {schedule_id}: {e}"
+        )
         success = False
     except Exception as e:
         app.logger.error(
-            f"Unexpected error during manual playback start for schedule {schedule_id}: {e}", exc_info=True
+            f"Unexpected error during manual playback start for schedule {schedule_id}: {e}",
+            exc_info=True,
         )
         success = False
 
@@ -506,17 +580,27 @@ def api_play_schedule_now(schedule_id):
                 check_delay = 0.5
                 _time.sleep(check_delay)
                 current_state = sp.current_playback()
-                if current_state and current_state.get("device") and current_state.get("device").get("id") == device_id:
+                if (
+                    current_state
+                    and current_state.get("device")
+                    and current_state.get("device").get("id") == device_id
+                ):
                     api_shuffle_state = current_state.get("shuffle_state", "N/A")
-                    app.logger.info(f"Checked state {check_delay:.1f}s after shuffle command:")
-                    app.logger.info(f"  API shuffle_state reported: {api_shuffle_state} (Expected: {shuffle_enabled})")
+                    app.logger.info(
+                        f"Checked state {check_delay:.1f}s after shuffle command:"
+                    )
+                    app.logger.info(
+                        f"  API shuffle_state reported: {api_shuffle_state} (Expected: {shuffle_enabled})"
+                    )
                     if api_shuffle_state != shuffle_enabled:
                         app.logger.warning(
                             f"  --> Shuffle state mismatch: Command sent for {shuffle_enabled}, but API reports {api_shuffle_state}."
                         )
                 # ... (rest of check logging) ...
             except Exception as check_e:
-                app.logger.warning(f"  Could not verify shuffle state after setting: {check_e}")
+                app.logger.warning(
+                    f"  Could not verify shuffle state after setting: {check_e}"
+                )
 
         except SpotifyException as shuffle_e:
             app.logger.warning(
@@ -555,7 +639,9 @@ def api_stop_schedule_now(schedule_id):
         # Check current playback state first
         current_state = sp.current_playback()
         if not current_state or not current_state.get("is_playing"):
-            app.logger.info(f"Stop Now for Schedule {schedule_id}: Nothing is currently playing.")
+            app.logger.info(
+                f"Stop Now for Schedule {schedule_id}: Nothing is currently playing."
+            )
             return jsonify({"message": "Nothing is currently playing"}), 200
 
         active_device_id = current_state.get("device", {}).get("id")
@@ -565,7 +651,11 @@ def api_stop_schedule_now(schedule_id):
                 f"Stop Now for Schedule {schedule_id}: Playback is active on different device ({active_device_name}), not on target device."
             )
             return (
-                jsonify({"message": f"Playback is active on {active_device_name}, not on this schedule's device"}),
+                jsonify(
+                    {
+                        "message": f"Playback is active on {active_device_name}, not on this schedule's device"
+                    }
+                ),
                 200,
             )
 
@@ -575,10 +665,15 @@ def api_stop_schedule_now(schedule_id):
         app.logger.info(f"Pause command sent for manual stop (Schedule {schedule_id}).")
         return jsonify({"message": "Playback stopped"}), 200
     except SpotifyException as e:
-        app.logger.error(f"Spotify API error during manual playback stop for schedule {schedule_id}: {e}")
+        app.logger.error(
+            f"Spotify API error during manual playback stop for schedule {schedule_id}: {e}"
+        )
         return jsonify({"error": "Failed to stop playback via Spotify API"}), 502
     except Exception as e:
-        app.logger.error(f"Unexpected error during manual playback stop for schedule {schedule_id}: {e}", exc_info=True)
+        app.logger.error(
+            f"Unexpected error during manual playback stop for schedule {schedule_id}: {e}",
+            exc_info=True,
+        )
         return jsonify({"error": "Failed to stop playback"}), 500
 
 
@@ -595,7 +690,10 @@ def api_current_playback():
     try:
         current = sp.current_playback(additional_types="episode")
         if not current or not current.get("item"):
-            return jsonify({"is_playing": False, "track": None, "next_track": None}), 200
+            return (
+                jsonify({"is_playing": False, "track": None, "next_track": None}),
+                200,
+            )
 
         item = current["item"]
         track_data = {
@@ -615,9 +713,13 @@ def api_current_playback():
                 next_item = queue_list[0]
                 next_track_data = {
                     "name": next_item.get("name", "Unknown"),
-                    "artists": ", ".join([a["name"] for a in next_item.get("artists", [])]),
+                    "artists": ", ".join(
+                        [a["name"] for a in next_item.get("artists", [])]
+                    ),
                     "album": next_item.get("album", {}).get("name", ""),
-                    "image": next_item.get("album", {}).get("images", [{}])[0].get("url", ""),
+                    "image": next_item.get("album", {})
+                    .get("images", [{}])[0]
+                    .get("url", ""),
                 }
         except Exception:
             pass
@@ -638,7 +740,9 @@ def api_current_playback():
         app.logger.error(f"Spotify API error during current playback fetch: {e}")
         return jsonify({"error": "Failed to fetch playback state"}), 502
     except Exception as e:
-        app.logger.error(f"Unexpected error during current playback fetch: {e}", exc_info=True)
+        app.logger.error(
+            f"Unexpected error during current playback fetch: {e}", exc_info=True
+        )
         return jsonify({"error": "Failed to fetch playback state"}), 500
 
 
@@ -656,7 +760,10 @@ def api_play_arbitrary_now():
         return jsonify({"error": "Spotify client unavailable"}), 503
 
     success = spotify_client.start_playback(
-        sp, device_id=data["device_id"], playlist_uri=data["playlist_uri"], volume=data.get("volume")  # Optional volume
+        sp,
+        device_id=data["device_id"],
+        playlist_uri=data["playlist_uri"],
+        volume=data.get("volume"),  # Optional volume
     )
 
     if success:
@@ -677,13 +784,20 @@ if __name__ == "__main__":
     key_file_path = os.getenv("FLASK_KEY_FILE")  # e.g., 'localhost.key'
 
     # Check if BOTH paths are provided via environment variables AND the files exist
-    if cert_file_path and key_file_path and os.path.exists(cert_file_path) and os.path.exists(key_file_path):
+    if (
+        cert_file_path
+        and key_file_path
+        and os.path.exists(cert_file_path)
+        and os.path.exists(key_file_path)
+    ):
         ssl_context_mode = (cert_file_path, key_file_path)
         print("--- Using Custom SSL Certificate ---")
         print(f"  Cert File: {cert_file_path}")
         print(f"  Key File:  {key_file_path}")
         print(f"  Access via: https://localhost:{port} or https://127.0.0.1:{port}")
-        print("  Ensure browser/OS trusts the CA that signed this cert (e.g., myCA.pem).")
+        print(
+            "  Ensure browser/OS trusts the CA that signed this cert (e.g., myCA.pem)."
+        )
     else:
         # Fallback to adhoc if custom files are not specified or not found
         if cert_file_path or key_file_path:
@@ -693,13 +807,17 @@ if __name__ == "__main__":
             print(f"  Specified Key:  {key_file_path or 'Not Set'}")
             print("  Falling back to 'adhoc' SSL context.")
         else:
-            print("--- Custom SSL cert/key not specified (FLASK_CERT_FILE, FLASK_KEY_FILE) ---")
+            print(
+                "--- Custom SSL cert/key not specified (FLASK_CERT_FILE, FLASK_KEY_FILE) ---"
+            )
             print("--- Using 'adhoc' SSL context ---")
 
         ssl_context_mode = "adhoc"
         print("  Requires pyOpenSSL (pip install pyOpenSSL).")
         print(f"  Access via: https://localhost:{port} or https://127.0.0.1:{port}")
-        print("  NOTE: Your browser WILL show a security warning (self-signed cert). You must accept/bypass it.")
+        print(
+            "  NOTE: Your browser WILL show a security warning (self-signed cert). You must accept/bypass it."
+        )
 
     # --- End Determine SSL Context ---
 
@@ -708,17 +826,23 @@ if __name__ == "__main__":
         print(" * Debug mode is ON")
 
     try:
-        app.run(host=host, port=port, debug=debug_mode, ssl_context=ssl_context_mode)  # Use the determined context
+        app.run(
+            host=host, port=port, debug=debug_mode, ssl_context=ssl_context_mode
+        )  # Use the determined context
     except ImportError:
         # This error specifically happens if 'adhoc' is attempted without pyOpenSSL
         print("\nERROR: pyOpenSSL not found, required for 'adhoc' SSL.")
         print("       Please install it: pip install pyOpenSSL")
         if ssl_context_mode != "adhoc":  # Check if we intended to use files
-            print(f"       Attempted to use cert={cert_file_path}, key={key_file_path}. Verify paths/existence.")
+            print(
+                f"       Attempted to use cert={cert_file_path}, key={key_file_path}. Verify paths/existence."
+            )
         print("")
     except FileNotFoundError as e:
         # This might happen if paths were provided to ssl_context tuple but files invalid
-        print(f"\nERROR: Could not find certificate or key file specified for ssl_context: {e}\n")
+        print(
+            f"\nERROR: Could not find certificate or key file specified for ssl_context: {e}\n"
+        )
     except OSError as e:
         # Handle other errors like port already in use
         print(f"\nERROR starting Flask server: {e}\n")

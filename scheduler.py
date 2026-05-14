@@ -31,8 +31,9 @@ def get_scheduler_spotify_client(user_spotify_id, logger):
             f"Token for user {user_spotify_id} expired or about to expire. Refreshing..."
         )
         try:
-            auth_manager = spotify_client._get_auth_manager()
-            token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
+            token_info = spotify_client.refresh_access_token(
+                token_info["refresh_token"]
+            )
             database.save_user_token(user_spotify_id, token_info)
             logger.info(f"Token refreshed and saved to DB for user {user_spotify_id}.")
         except Exception as e:
@@ -189,25 +190,12 @@ def perform_spotify_action(sp, schedule, logger):
         logger.error(
             f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}"
         )
-        return False
-    except Exception as e:
-        logger.error(
-            f"Unexpected error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}",
-            exc_info=True,
-        )
-        return False
-
-    except SpotifyException as e:
-        logger.error(
-            f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}"
-        )
         if e.http_status == 404 and "Device not found" in str(e):
             logger.error(f"Device ID '{device_id}' not found or inactive.")
         elif e.http_status == 403:
             logger.error(
                 "Permission error (ensure device isn't private session, check scope)."
             )
-        # Handle other specific errors if needed
         return False
     except Exception as e:
         logger.error(

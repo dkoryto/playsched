@@ -4,7 +4,7 @@
 
 ![App Icon](static/android-chrome-192x192.png)
 
-[Version History](VERSION.md) - Current Version: v0.2.0 - 14 May 2026
+[Version History](VERSION.md) - Current Version: v0.3.0 - 14 May 2026
 
 [Roadmap](ROADMAP.md)
 
@@ -21,7 +21,7 @@ This will evolve over time. Currently, it is scratching an itch - I realised tha
 
 ### Web Application (`playsched.py`) Features
 
-* **Spotify Authentication:** Securely log in using your Spotify account (OAuth 2.0).
+* **Spotify Authentication:** Securely log in using your Spotify account (OAuth 2.0). Tokens are now stored in the SQLite database (`user_tokens` table), enabling multi-user support and eliminating file-cache conflicts.
 * **Playlist Browse:** View and filter your Spotify playlists.
 * **Device Listing:** Automatically detects available Spotify Connect devices.
 * **Scheduling:**
@@ -41,6 +41,7 @@ This will evolve over time. Currently, it is scratching an itch - I realised tha
 * **Now Playing Widget:** Real-time display of the currently playing track (title, artist, album cover, progress bar with elapsed/total time), active device name, and the next upcoming track. Updates dynamically every 5 seconds.
 * **Live Clock:** Current date and time displayed prominently in the header, with ticking seconds and a clean monospace font.
 * **Dark Mode:** Full dark/light theme toggle with system preference detection. Theme preference is persisted in `localStorage`.
+* **Toast Notifications:** Non-intrusive success/info messages instead of blocking `alert()` popups.
 * **Background Scheduler:** Uses APScheduler to automatically start/stop playback according to the defined schedules.
 
 ### Command-Line Script (`play_spotify_playlist.py`) Features
@@ -59,6 +60,7 @@ This will evolve over time. Currently, it is scratching an itch - I realised tha
 * **Data Export:**
     * Exports the synced playlists and tracks from the local database.
     * Supports export to Excel (`.xlsx` with separate sheets for playlists and tracks), CSV (generates two files: `*_playlists.csv` and `*_tracks.csv`), or JSON (`.json` with a structured output).
+* **Multi-User Support (DB-backed):** CLI requires a `--user-id` argument. Tokens are fetched from the shared database (populated by the web app login).
 
 ![Browse Playlists](img/screenshot-browse-playlists.jpg)
 
@@ -87,7 +89,7 @@ To allow this application to interact with your Spotify account, you need to reg
     * **Website:** You will need to specify a website URL. For local development, you can use the Flask server location of the webapp (e.g., `https://127.0.0.1:9093`).
     * **Redirect URIs:** Add the exact URI(s) your application will use for callbacks. For this project using HTTPS on the default port `9093`, add this:
         ```
-        [https://127.0.0.1:9093/callback](https://127.0.0.1:9093/callback)
+        https://127.0.0.1:9093/callback
         ```
         * Use `127.0.0.1` rather than `localhost` - localhost can sometimes cause issues with callback validation or browser security policies.
         * Ensure this **exactly matches** the `SPOTIPY_REDIRECT_URI` you set in your `.env` file later. Add one URI per line.
@@ -98,7 +100,7 @@ To allow this application to interact with your Spotify account, you need to reg
 
 1.  **Clone the Repository:**
     ```bash
-    git clone [https://github.com/storizzi/playsched](https://github.com/storizzi/playsched)
+    git clone https://github.com/dkoryto/playsched
     cd playsched
     ```
 
@@ -144,7 +146,7 @@ The application uses environment variables loaded from a `.env` file in the proj
     SPOTIPY_CLIENT_ID='YOUR_SPOTIFY_CLIENT_ID'
     SPOTIPY_CLIENT_SECRET='YOUR_SPOTIFY_CLIENT_SECRET'
     # Use the HTTPS URI matching your setup and Spotify Dashboard exactly
-    SPOTIPY_REDIRECT_URI='[https://127.0.0.1:9093/callback](https://127.0.0.1:9093/callback)'
+    SPOTIPY_REDIRECT_URI='https://127.0.0.1:9093/callback'
 
     # Flask Web App Configuration (Required)
     SECRET_KEY='YOUR_STRONG_RANDOM_SECRET_KEY' # Generate using: python -c 'import secrets; print(secrets.token_hex(16))'
@@ -156,7 +158,9 @@ The application uses environment variables loaded from a `.env` file in the proj
 
     # Shared Application Settings (Required)
     SCHEDULE_DB_FILE='playsched.db'
-    SPOTIPY_CACHE_PATH='.spotify_token_cache.json' # For scheduler auth token
+    # DEPRECATED: SPOTIPY_CACHE_PATH is no longer used by the web app or scheduler.
+    # Tokens are now stored in the database (user_tokens table).
+    # SPOTIPY_CACHE_PATH='.spotify_token_cache.json'
     SCHEDULER_INTERVAL_SECONDS=15
     SCHEDULER_TIMEZONE='UTC' # Or your preferred TZ database name
 
@@ -170,10 +174,6 @@ The application uses environment variables loaded from a `.env` file in the proj
 
     # Optional: Spotify Market Code (Used by CLI)
     # SPOTIPY_MARKET='FR'
-
-    # Note: CLI tool database for history and synced playlists
-    # By default, uses SCHEDULE_DB_FILE. Can be overridden by HISTORY_DB_FILE.
-    # HISTORY_DB_FILE=playsched_cli.db
     ```
 
 ## HTTPS for Local Development (Handling Spotify Requirement)
@@ -187,8 +187,8 @@ This involves generating your own Certificate Authority (CA) and a server certif
 1.  **Generate Certificates:**
     * Run the provided Zsh script (ensure OpenSSL is installed):
         ```bash
-        chmod +x generate_certs.sh
-        ./generate_certs.sh
+        chmod +x generate_certs.zsh
+        ./generate_certs.zsh
         ```
     * This creates `myCA.pem` (your CA cert), `myCA.key` (CA private key), `localhost.crt` (server cert), and `localhost.key` (server key) plus a few others (crt/csr/srl) if you need them.
 
@@ -223,7 +223,7 @@ This is simpler but requires bypassing browser warnings every time.
 
 1.  **Ensure `pyOpenSSL` is installed:** `pip install pyOpenSSL` (included in `requirements.txt`).
 2.  **Do Not Set Cert/Key in `.env`:** Make sure `FLASK_CERT_FILE` and `FLASK_KEY_FILE` are *not* set or are commented out in your `.env` file.
-3.  **Run Flask:** Start the app as usual (`flask run ...`). The console output will indicate it's using `'adhoc'` SSL.
+3.  **Run Flask:** Start the app as usual (`python playsched.py`). The console output will indicate it's using adhoc SSL.
 4.  **Access & Bypass Warning:** Navigate to `https://127.0.0.1:9093`. Your browser **will** show a security warning ("Your connection is not private", etc.). Click "Advanced" or similar, and choose to "Proceed to..." the site.
 
 **Regardless of the method, ensure your `SPOTIPY_REDIRECT_URI` uses `https://` and matches the hostname you use to access the app (e.g., `https://127.0.0.1:9093/callback`).**
@@ -233,29 +233,26 @@ This is simpler but requires bypassing browser warnings every time.
 ### Running the Web Application
 
 1.  **Activate your virtual environment**.
-2.  **Set Flask App Environment Variable (if needed):**
+2.  **Run the Flask Development Server:**
     ```bash
-    # On macOS/Linux
-    export FLASK_APP=playsched.py
-    # On Windows (cmd)
-    set FLASK_APP=playsched.py
-    # On Windows (PowerShell)
-    $env:FLASK_APP = "playsched.py"
+    python playsched.py
     ```
-3.  **Run the Flask Development Server:**
-    ```bash
-    flask run --host=0.0.0.0 --port=9093
-    ```
-4.  Open your web browser and navigate to `https://127.0.0.1:9093` (or `https://localhost:9093` if using that in your cert/config). Bypass security warnings if using the `adhoc` method.
+3.  Open your web browser and navigate to `https://127.0.0.1:9093` (or `https://localhost:9093` if using that in your cert/config). Bypass security warnings if using the adhoc method.
+4.  **Log in with Spotify** via the web interface. This stores your authentication token in the database (`user_tokens` table), making it available to the scheduler and CLI.
 
 ### Running the Command-Line Script
 
+The CLI now fetches tokens from the database (not a file cache). You must log in via the web app at least once before using CLI commands that require Spotify authentication.
+
 1.  **Activate your virtual environment**.
-2.  Run the script from your terminal within the project directory:
+2.  **List users with stored tokens:**
     ```bash
-    python play_spotify_playlist.py --help
+    python play_spotify_playlist.py --list-users
     ```
-    This will show you the available command-line arguments.
+3.  **Run commands with `--user-id`:**
+    ```bash
+    python play_spotify_playlist.py --user-id YOUR_SPOTIFY_USER_ID --list-devices
+    ```
 
 ## Usage
 
@@ -268,27 +265,27 @@ This is simpler but requires bypassing browser warnings every time.
 
 ### Command-Line Script Usage
 
-Use arguments to perform actions:
+Use arguments to perform actions. All Spotify-authenticated actions require `--user-id`.
 
-* List available devices:
+* **List available devices:**
     ```bash
-    python play_spotify_playlist.py --list-devices
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --list-devices
     ```
-* List your playlists (from Spotify API):
+* **List your playlists (from Spotify API):**
     ```bash
-    python play_spotify_playlist.py --list-playlists
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --list-playlists
     ```
-* Update local playback history database:
+* **Update local playback history database:**
     ```bash
-    python play_spotify_playlist.py --update-history
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --update-history
     ```
-* Show recently played playlists from the local history database:
+* **Show recently played playlists from the local history database:**
     ```bash
-    python play_spotify_playlist.py --recent-playlists
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --recent-playlists
     ```
 * **Sync all your playlists and their tracks to the local database:**
     ```bash
-    python play_spotify_playlist.py --sync-playlists
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --sync-playlists
     ```
 * **Export synced data to a file (Excel, CSV, or JSON):**
     ```bash
@@ -302,18 +299,56 @@ Use arguments to perform actions:
     python play_spotify_playlist.py --export-data my_spotify_data.json
     ```
     *Note: The export feature requires `pandas` and `openpyxl` (for Excel). Install with `pip install pandas openpyxl`.*
-* Play a playlist by name on a specific device:
+    *Note: Export does not require `--user-id` as it only reads from the local database.*
+* **Play a playlist by name on a specific device:**
     ```bash
-    python play_spotify_playlist.py --device "My Speakers" --playlist "Chill Mix"
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --device "My Speakers" --playlist "Chill Mix"
     ```
-* Play a playlist using its Spotify URI:
+* **Play a playlist using its Spotify URI:**
     ```bash
-    python play_spotify_playlist.py --device "My Speakers" --playlist "spotify:playlist:37i9dQ..."
+    python play_spotify_playlist.py --user-id YOUR_USER_ID --device "My Speakers" --playlist "spotify:playlist:37i9dQ..."
     ```
 
 *(See `python play_spotify_playlist.py --help` for all options)*
 
-The CLI tool (`play_spotify_playlist.py`) by default uses the same database file as specified by `SCHEDULE_DB_FILE` (e.g., `playsched.db`) for its history and synced playlist data. If you prefer a separate database file for the CLI tool (e.g., if you encounter issues with simultaneous access while the scheduler is running), you can set the `HISTORY_DB_FILE` environment variable in your `.env` file (e.g., `HISTORY_DB_FILE=spotify_cli_data.db`). The `play_spotify_playlist.py` script will then use this separate file. Future versions may further integrate history updates into the main scheduler.
+## Troubleshooting
+
+### Web App / Login Issues
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| `SpotifyOAuth initialized...` logged repeatedly | Normal startup log, not an error | Ignore |
+| "Authentication failed" or redirect loop after Spotify login | `SPOTIPY_REDIRECT_URI` mismatch | Ensure it exactly matches the Redirect URI in Spotify Dashboard (including `https://` and `/callback`) |
+| Browser shows "Your connection is not private" | Untrusted self-signed certificate | Trust `myCA.pem` in browser (see HTTPS section) or use adhoc mode and click "Proceed" |
+| Scheduler does not start playback | No token in DB for user | Log in via web app first. Check `--list-users` in CLI to verify token exists |
+| Scheduler does not start playback | Device offline / inactive | Ensure Spotify is open on the target device and it appears in the device list |
+| "Error: Could not set volume" | Device does not support volume control | Check if device is a Spotify Connect speaker vs. web player |
+
+### CLI Issues
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| `Error: --user-id is required` | CLI now requires explicit user ID | Log in via web app first, then run `--list-users` to find your ID |
+| `No token found in database for user '...'` | User has not logged in via web app | Open the web app and click "Login with Spotify" |
+| `Error refreshing token...` | Refresh token revoked or expired | Log in again via web app to regenerate tokens |
+| `No active Spotify devices found` | Spotify not running on target device | Open Spotify on the device you want to play on |
+| Export fails with pandas error | Missing optional dependencies | Run `pip install pandas openpyxl` |
+
+### Database / File Issues
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| `Database tables checked/created.` | Normal first-run log | Ignore |
+| `.cache` file appears | Legacy Spotipy file cache | Safe to delete. Add `.cache` to `.gitignore` |
+| `.spotify_token_cache.json` still exists | Leftover from v0.2.x | Safe to delete after logging in via web app once (tokens are now in DB) |
+
+### Scheduler / Background Jobs
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| Schedule triggers multiple times per minute | `SCHEDULER_INTERVAL_SECONDS` is too low and job runs longer than interval | Default 15s is fine; check logs for job duration |
+| "Skipping pause - playback is active, but not on target device" | Device ID mismatch or user switched devices | Ensure the scheduled device ID matches the currently active device |
+| Shuffle state mismatch in logs | Spotify API eventual consistency | Cosmetic warning; playback still works correctly |
 
 ## Notes & Caveats
 
@@ -321,8 +356,8 @@ The CLI tool (`play_spotify_playlist.py`) by default uses the same database file
 * **Device Availability:** Playback requires the target device to be online and active in Spotify. Actions will fail if the device is unavailable.
 * **Scheduler Precision:** Scheduled jobs run based on the `SCHEDULER_INTERVAL_SECONDS`. Playback might start/stop slightly after the exact scheduled minute.
 * **Timezones & DST:** Ensure correct timezone strings (TZ database names) are used in schedules. Backend calculations use `pytz` to handle timezones and DST.
-* **Token Cache (`.spotify_token_cache.json`):** Stores the web app's authentication token, used by the scheduler. Deleting requires re-login via the web app. The CLI script uses this same cache file for authentication.
-* **Databases:** `playsched.db` (or as configured) stores web app schedules, CLI history, and synced playlists/tracks. Back them up if needed.
+* **Token Storage:** Authentication tokens are stored in the `user_tokens` SQLite table (inside `SCHEDULE_DB_FILE`). The scheduler and CLI read from this table. The old `.spotify_token_cache.json` file is no longer used by the core application.
+* **Databases:** `playsched.db` (or as configured) stores web app schedules, user tokens, CLI history, and synced playlists/tracks. Back them up if needed.
 
 ## Contributing
 

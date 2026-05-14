@@ -38,8 +38,9 @@ def get_spotify_client(user_id):
     if token_info["expires_at"] - now < 60:
         print(f"Token for user '{user_id}' expired. Refreshing...")
         try:
-            auth_manager = spotify_client._get_auth_manager()
-            token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
+            token_info = spotify_client.refresh_access_token(
+                token_info["refresh_token"]
+            )
             database.save_user_token(user_id, token_info)
             print("Token refreshed and saved to database.")
         except Exception as e:
