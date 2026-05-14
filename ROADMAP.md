@@ -11,15 +11,17 @@ A few ideas for future version - feel free to suggest things yourself! This is s
 * ✅ **Now Playing Widget** (v0.2.0) - Dynamic display of current track (title, artist, cover, progress bar, device) and next track in queue
 * ✅ **Responsive Design** (v0.2.0) - Mobile-first layout that works on phones, tablets, and desktops
 * ✅ **Project Auto-Setup** (v0.2.0) - `.env` generation, SSL certificate creation, dependency installation
+* ✅ **Shared functionality** (v0.3.0) - Refactored CLI into shared libraries (`services.py`, `spotify_client.py`, `database.py`)
+* ✅ **Token cache in database** (v0.3.0) - Moved `.spotify_token_cache.json` to SQLite `user_tokens` table, enabling multi-user support
 
 ## Spotify Related
 
 * Create zsh script and crontab file to use with crontab to (every 2 hours) update spotify played tracks, and (every day) update playlists with changes
-* Shared functionality - Share functionality between command line tool and front-end and create libraries of that shared functionality
+* ~~Shared functionality - Share functionality between command line tool and front-end and create libraries of that shared functionality~~ ✅ Done (v0.3.0)
 * Play spotify playlists not linked to user
 * Play individual tracks from playlists
 * Create new playlist from tracks from multiple playlists
-* Optionally move token cache into database
+* ~~Optionally move token cache into database~~ ✅ Done (v0.3.0)
 * Optionally move environment information into database
 * Multiple Spotify accounts from one dashboard
 
