@@ -5,10 +5,10 @@
 import argparse
 import os
 import sys
+import time
 
 import spotipy
 from dotenv import load_dotenv
-from spotipy.oauth2 import SpotifyOAuth
 
 import database
 import services
@@ -17,52 +17,43 @@ import spotify_client
 # Load environment variables
 load_dotenv()
 
-# --- Configuration ---
-CACHE_PATH = os.getenv("SPOTIPY_CACHE_PATH", ".spotify_token_cache.json")
-SCOPES = (
-    "user-read-playback-state user-modify-playback-state "
-    "playlist-read-private playlist-read-collaborative user-read-recently-played"
-)
 
-
-def get_spotify_client():
-    """Authenticates and returns a Spotipy client instance for CLI use."""
-    client_id = os.getenv("SPOTIPY_CLIENT_ID")
-    client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
-    redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI")
-
-    if not all([client_id, client_secret, redirect_uri]):
+def get_spotify_client(user_id):
+    """Returns a Spotipy client for CLI use by fetching the token from the database."""
+    if not user_id:
         print(
-            "\nError: SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, and SPOTIPY_REDIRECT_URI"
+            "\nError: --user-id is required. Use --list-users to see available user IDs."
         )
-        print("       must be set in your environment or .env file.")
         sys.exit(1)
 
-    print(f"Using token cache path: {CACHE_PATH}")
-    if not os.path.exists(CACHE_PATH):
+    token_info = database.get_user_token(user_id)
+    if not token_info:
         print(
-            f"Cache file {CACHE_PATH} does not exist. Attempting first-time auth via browser."
+            f"\nError: No token found in database for user '{user_id}'.\n"
+            "       Please log in via the web application first."
         )
-        print("Hint: Log in via the web application first to populate the cache.")
+        sys.exit(1)
+
+    now = int(time.time())
+    if token_info["expires_at"] - now < 60:
+        print(f"Token for user '{user_id}' expired. Refreshing...")
+        try:
+            auth_manager = spotify_client._get_auth_manager()
+            token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
+            database.save_user_token(user_id, token_info)
+            print("Token refreshed and saved to database.")
+        except Exception as e:
+            print(f"Error refreshing token for user '{user_id}': {e}")
+            sys.exit(1)
 
     try:
-        auth_manager = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
-            scope=SCOPES,
-            cache_path=CACHE_PATH,
-            open_browser=True,
-        )
-        sp = spotipy.Spotify(auth_manager=auth_manager)
+        sp = spotipy.Spotify(auth=token_info["access_token"])
+        # Quick validation
         user = sp.current_user()
-        print(
-            f"Authentication successful for user: {user.get('display_name', user.get('id'))}"
-        )
+        print(f"Authenticated as: {user.get('display_name', user.get('id'))}")
         return sp
     except Exception as e:
-        print(f"\nError during authentication: {e}")
-        print("Please ensure you have logged in via the Web Application at least once.")
+        print(f"\nError creating Spotify client: {e}")
         sys.exit(1)
 
 
@@ -250,7 +241,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Sync all user playlists and tracks to local DB.",
     )
+    action_group.add_argument(
+        "--list-users",
+        action="store_true",
+        help="List Spotify user IDs with stored tokens in the database.",
+    )
 
+    parser.add_argument(
+        "--user-id",
+        type=str,
+        help="Spotify user ID to act as (required for auth-dependent actions).",
+    )
     parser.add_argument(
         "--device",
         type=str,
@@ -279,6 +280,7 @@ if __name__ == "__main__":
             args.update_history,
             args.recent_playlists,
             args.sync_playlists,
+            args.list_users,
         ]
     )
     is_export_action = args.export_data is not None
@@ -313,6 +315,7 @@ if __name__ == "__main__":
         or args.recent_playlists
         or args.sync_playlists
         or is_export_action
+        or args.list_users
     )
 
     sp = None
@@ -320,16 +323,21 @@ if __name__ == "__main__":
     action_taken_or_attempted = False
 
     try:
-        if needs_auth:
-            sp = get_spotify_client()
-            if not sp:
-                sys.exit(1)
-
         if needs_db:
             print(f"Connecting to database: {database.SCHEDULE_DB_FILE}")
             conn = database.get_db_connection()
 
-        if is_export_action:
+        if args.list_users:
+            action_taken_or_attempted = True
+            users = database.list_user_ids_with_tokens()
+            if users:
+                print("\n--- Users with stored tokens ---")
+                for uid in users:
+                    print(f"- {uid}")
+            else:
+                print("\nNo users with stored tokens found in the database.")
+
+        elif is_export_action:
             action_taken_or_attempted = True
             if conn:
                 services.export_data_to_file(conn, args.export_data)
@@ -338,6 +346,10 @@ if __name__ == "__main__":
 
         elif is_action_flag_present:
             action_taken_or_attempted = True
+            if needs_auth:
+                sp = get_spotify_client(args.user_id)
+                if not sp:
+                    sys.exit(1)
             if args.list_devices:
                 list_devices(sp)
             elif args.list_playlists:
@@ -351,6 +363,9 @@ if __name__ == "__main__":
 
         elif is_playback_action:
             action_taken_or_attempted = True
+            sp = get_spotify_client(args.user_id)
+            if not sp:
+                sys.exit(1)
             device_id = find_device(sp, args.device)
             playlist_uri = None
             if device_id:

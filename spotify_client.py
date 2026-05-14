@@ -2,66 +2,72 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
-from flask import session  # Use Flask session for token storage
+from flask import session  # Keep session for user_id/display_name only
 import time
 import logging
+
+import database
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# Use the same scopes defined elsewhere or define specifically for web
 WEB_SCOPES = (
     "user-read-playback-state user-modify-playback-state playlist-read-private "
     "playlist-read-collaborative user-read-private user-read-email "
     "user-read-currently-playing user-read-recently-played"
 )
-CACHE_PATH = os.getenv("SPOTIPY_CACHE_PATH", ".spotify_token_cache.json")
 
-# Store auth manager globally or pass around - global makes routes easier
-# Ensure redirect_uri matches the one in .env and Flask route
-auth_manager = SpotifyOAuth(
-    client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
-    scope=WEB_SCOPES,
-    cache_path=CACHE_PATH,  # Don't use file cache for web app, rely on session
-)
+_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
+_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 
-print(
-    f"SpotifyOAuth initialized with redirect_uri: {os.getenv('SPOTIPY_REDIRECT_URI')}"
-)
+print(f"SpotifyOAuth initialized with redirect_uri: {_REDIRECT_URI}")
+
+
+def _get_auth_manager():
+    """Returns a SpotifyOAuth instance without file cache."""
+    return SpotifyOAuth(
+        client_id=_CLIENT_ID,
+        client_secret=_CLIENT_SECRET,
+        redirect_uri=_REDIRECT_URI,
+        scope=WEB_SCOPES,
+        open_browser=False,
+    )
 
 
 def get_auth_url():
     """Gets the Spotify authorization URL."""
-    # Add show_dialog=True if you want user to always approve permissions
-    return auth_manager.get_authorize_url()
+    return _get_auth_manager().get_authorize_url()
 
 
 def get_token_from_code(code):
-    """Exchanges authorization code for tokens and stores them in session."""
+    """Exchanges authorization code for tokens and stores them in the database."""
     try:
+        auth_manager = _get_auth_manager()
         token_info = auth_manager.get_access_token(code, check_cache=False)
-        session["spotify_token_info"] = token_info
-        # Also get user profile to store ID
         sp = spotipy.Spotify(auth=token_info["access_token"])
         user_info = sp.current_user()
-        session["spotify_user_id"] = user_info["id"]
-        session["spotify_user_display_name"] = user_info.get(
-            "display_name", user_info["id"]
-        )
+        user_id = user_info["id"]
+        session["spotify_user_id"] = user_id
+        session["spotify_user_display_name"] = user_info.get("display_name", user_id)
+        database.save_user_token(user_id, token_info)
         return True
     except Exception as e:
         logger.error(f"Error getting token from code: {e}")
         return False
 
 
-def get_refreshed_token():
+def get_refreshed_token(user_id=None):
     """Checks if token needs refresh, refreshes if needed, returns token_info."""
-    token_info = session.get("spotify_token_info")
+    if user_id is None:
+        user_id = session.get("spotify_user_id")
+    if not user_id:
+        return None
+
+    token_info = database.get_user_token(user_id)
     if not token_info:
-        return None  # User not authenticated
+        return None
 
     now = int(time.time())
     is_expired = (
@@ -70,13 +76,13 @@ def get_refreshed_token():
 
     if is_expired:
         try:
+            auth_manager = _get_auth_manager()
             token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
-            session["spotify_token_info"] = token_info
-            logger.info("Spotify token refreshed.")
+            database.save_user_token(user_id, token_info)
+            logger.info(f"Spotify token refreshed for user {user_id}.")
         except Exception as e:
-            logger.error(f"Error refreshing token: {e}")
-            # Could potentially redirect to login here if refresh fails badly
-            session.pop("spotify_token_info", None)
+            logger.error(f"Error refreshing token for user {user_id}: {e}")
+            database.delete_user_token(user_id)
             session.pop("spotify_user_id", None)
             session.pop("spotify_user_display_name", None)
             return None
@@ -84,10 +90,10 @@ def get_refreshed_token():
 
 
 def get_spotify_client():
-    """Returns an authenticated Spotipy client instance using session token."""
+    """Returns an authenticated Spotipy client instance using DB-stored token."""
     token_info = get_refreshed_token()
     if not token_info:
-        return None  # Not authenticated or token refresh failed
+        return None
     try:
         return spotipy.Spotify(auth=token_info["access_token"])
     except Exception as e:
@@ -95,12 +101,21 @@ def get_spotify_client():
         return None
 
 
+def get_spotify_client_for_user(user_id):
+    """Returns an authenticated Spotipy client for a specific user_id (no Flask session needed)."""
+    token_info = get_refreshed_token(user_id=user_id)
+    if not token_info:
+        return None
+    try:
+        return spotipy.Spotify(auth=token_info["access_token"])
+    except Exception as e:
+        logger.error(f"Error creating spotipy client for user {user_id}: {e}")
+        return None
+
+
 # --- Wrapper functions for API calls ---
 
-# In spotify_client.py
 
-
-# Keep this function (or rename the original one back)
 def get_all_user_playlists(sp):
     """Gets ALL playlists for the current user using pagination internally."""
     if not sp:
@@ -115,8 +130,6 @@ def get_all_user_playlists(sp):
                 break  # No more items
             all_playlists.extend(results["items"])
             if results["next"]:
-                # Prepare offset for next iteration
-                # Note: sp.current_user_playlists uses limit/offset, so incrementing offset is correct
                 offset += limit
             else:
                 break  # No more pages
@@ -124,11 +137,10 @@ def get_all_user_playlists(sp):
             logger.error(
                 f"Spotify API error fetching playlists page (offset={offset}): {e.msg}"
             )
-            return None  # Indicate error if any page fails
+            return None
         except Exception as e:
             logger.error(f"Error fetching user playlists page (offset={offset}): {e}")
-            return None  # Indicate error
-    # Successfully fetched all pages
+            return None
     logger.info(f"Fetched a total of {len(all_playlists)} playlists.")
     return all_playlists
 
@@ -138,12 +150,10 @@ def start_playback(sp, device_id, playlist_uri, volume=None):
     if not sp:
         return False
     try:
-        context_uri = playlist_uri  # Assuming URI is passed
-        sp.start_playback(device_id=device_id, context_uri=context_uri)
+        sp.start_playback(device_id=device_id, context_uri=playlist_uri)
         logger.info(f"Playback started: {playlist_uri} on {device_id}")
-        # Set volume *after* starting playback
         if volume is not None and isinstance(volume, int) and 0 <= volume <= 100:
-            time.sleep(1)  # Short delay might help ensure playback has started
+            time.sleep(1)
             try:
                 sp.volume(volume, device_id=device_id)
                 logger.info(f"Volume set to {volume} on {device_id}")
@@ -157,7 +167,6 @@ def start_playback(sp, device_id, playlist_uri, volume=None):
 
 def stop_playback(sp, device_id):
     """Stops playback on a specific device."""
-    # Note: Spotify API doesn't have a dedicated "stop". Pause is the standard way.
     if not sp:
         return False
     try:
@@ -165,7 +174,6 @@ def stop_playback(sp, device_id):
         logger.info(f"Playback paused (stopped) on device {device_id}")
         return True
     except Exception as e:
-        # Handle specific errors e.g., if device not found or playback not active
         logger.error(f"Error pausing playback on {device_id}: {e}")
         return False
 
@@ -174,30 +182,21 @@ def get_user_devices(sp):
     """Gets available playback devices for the current user."""
     if not sp:
         logger.error("get_user_devices called without valid sp client")
-        return None  # Indicate error: No client
+        return None
     try:
-        # Call the spotipy method to get devices
         devices_info = sp.devices()
-
-        # Check if the response structure is as expected
         if devices_info and isinstance(devices_info.get("devices"), list):
-            return devices_info["devices"]  # Return the list of device objects
+            return devices_info["devices"]
         else:
-            # Log if the structure is weird or if the 'devices' key is missing/not a list
             logger.warning(
                 f"sp.devices() returned unexpected structure or no devices list: {devices_info}"
             )
-            return []  # Return empty list - consistent with no devices found
-
+            return []
     except spotipy.exceptions.SpotifyException as e:
-        # Log Spotify specific errors (like auth issues, rate limits, bad requests)
         logger.error(
             f"Spotify API error fetching devices: {e.msg} (HTTP Status: {e.http_status})"
         )
-        return None  # Indicate error: API error
+        return None
     except Exception as e:
-        # Log other unexpected errors during the process
-        logger.error(
-            f"Unexpected error fetching user devices: {e}", exc_info=True
-        )  # Log traceback
-        return None  # Indicate error: Other error
+        logger.error(f"Unexpected error fetching user devices: {e}", exc_info=True)
+        return None

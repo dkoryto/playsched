@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -100,6 +101,22 @@ def create_tables():
             "ON synced_playlist_tracks (is_removed_from_playlist)"
         )
         # --- end CLI/HISTORY tables ---
+
+        # --- User token cache table (replaces .spotify_token_cache.json) ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                user_spotify_id TEXT PRIMARY KEY,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                token_type TEXT,
+                scope TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        # --- end token cache table ---
 
         conn.commit()
         print("Database tables checked/created.")
@@ -311,6 +328,101 @@ def update_schedule_trigger_info(schedule_id, trigger_time_utc_iso, played_once=
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database error updating trigger info for schedule {schedule_id}: {e}")
+    finally:
+        conn.close()
+
+
+# --- Token CRUD ---
+
+
+def save_user_token(user_id, token_info):
+    """Upserts Spotify token info for a user."""
+    sql = (
+        "INSERT INTO user_tokens (user_spotify_id, access_token, refresh_token, "
+        "expires_at, token_type, scope, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(user_spotify_id) DO UPDATE SET "
+        "access_token=excluded.access_token, refresh_token=excluded.refresh_token, "
+        "expires_at=excluded.expires_at, token_type=excluded.token_type, "
+        "scope=excluded.scope, updated_at=excluded.updated_at"
+    )
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            sql,
+            (
+                user_id,
+                token_info.get("access_token"),
+                token_info.get("refresh_token"),
+                token_info.get("expires_at"),
+                token_info.get("token_type"),
+                token_info.get("scope"),
+                datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error saving token for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_token(user_id):
+    """Retrieves token info dict for a user, or None."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token, refresh_token, expires_at, token_type, scope "
+            "FROM user_tokens WHERE user_spotify_id = ?",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "access_token": row["access_token"],
+            "refresh_token": row["refresh_token"],
+            "expires_at": row["expires_at"],
+            "token_type": row["token_type"],
+            "scope": row["scope"],
+        }
+    except sqlite3.Error as e:
+        print(f"Database error getting token for user {user_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def delete_user_token(user_id):
+    """Deletes a user's token record."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_tokens WHERE user_spotify_id = ?", (user_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Database error deleting token for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def list_user_ids_with_tokens():
+    """Returns a list of user_spotify_id strings that have stored tokens."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_spotify_id FROM user_tokens ORDER BY updated_at DESC"
+        )
+        return [row["user_spotify_id"] for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"Database error listing users with tokens: {e}")
+        return []
     finally:
         conn.close()
 

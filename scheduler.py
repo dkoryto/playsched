@@ -1,68 +1,56 @@
 # scheduler.py
-import os
 import time
 from datetime import datetime
 import pytz  # Required for timezone handling (pip install pytz)
 
-# from apscheduler.schedulers.blocking import BlockingScheduler
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
 
 # Import the database module to interact with schedules DB
 import database
-
-# --- Configuration ---
-# Load credentials and settings from environment variables or a config file
-CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
-CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
-SCOPE = "user-modify-playback-state user-read-playback-state playlist-read-private user-read-currently-playing"  # Match scopes needed
-CACHE_PATH = os.getenv("SPOTIPY_CACHE_PATH", ".spotify_token_cache.json")  # Ensure consistent cache path
+import spotify_client
 
 
 # --- Spotify Client Retrieval ---
 def get_scheduler_spotify_client(user_spotify_id, logger):
-    """
-    Gets an authenticated Spotipy client for the scheduler using the shared cache file.
-    Manages token refresh automatically via SpotifyOAuth.
-    user_spotify_id is mainly for clear log messages.
-    """
-    # Check if cache file exists before attempting auth
-    if not os.path.exists(CACHE_PATH):
+    """Gets an authenticated Spotipy client for the scheduler from the DB token cache."""
+    logger.info(
+        f"Attempting to get Spotify client for user '{user_spotify_id}' from DB..."
+    )
+    token_info = database.get_user_token(user_spotify_id)
+    if not token_info:
         logger.warning(
-            f"Spotify cache file {CACHE_PATH} not found. Cannot authenticate for user {user_spotify_id}. User needs to log in via Flask app."
+            f"No token found in DB for user {user_spotify_id}. "
+            "User needs to log in via the web application."
         )
         return None
 
-    logger.info(f"Attempting to get Spotify client for user '{user_spotify_id}' using cache: {CACHE_PATH}")
-    try:
-        if not all([CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, SCOPE]):
-            logger.error("Scheduler: Missing Spotify credentials/configuration in environment.")
-            return None
-
-        sp_oauth = SpotifyOAuth(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-            redirect_uri=REDIRECT_URI,
-            scope=SCOPE,
-            cache_path=CACHE_PATH,
-            open_browser=False,
+    now = int(time.time())
+    if token_info["expires_at"] - now < 60:
+        logger.info(
+            f"Token for user {user_spotify_id} expired or about to expire. Refreshing..."
         )
-        token_info = sp_oauth.get_cached_token()
-
-        if token_info:
-            logger.info(f"Scheduler: Successfully obtained token for user '{user_spotify_id}' via cache {CACHE_PATH}")
-            sp = spotipy.Spotify(auth=token_info["access_token"])
-            return sp
-        else:
-            logger.warning(
-                f"Scheduler: Could not get token for user '{user_spotify_id}' from cache {CACHE_PATH}. Needs user re-authentication via main app."
+        try:
+            auth_manager = spotify_client._get_auth_manager()
+            token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
+            database.save_user_token(user_spotify_id, token_info)
+            logger.info(f"Token refreshed and saved to DB for user {user_spotify_id}.")
+        except Exception as e:
+            logger.error(
+                f"Failed to refresh token for user {user_spotify_id}: {e}",
+                exc_info=True,
             )
             return None
+
+    try:
+        sp = spotipy.Spotify(auth=token_info["access_token"])
+        logger.info(
+            f"Successfully obtained Spotify client for user '{user_spotify_id}'."
+        )
+        return sp
     except Exception as e:
         logger.error(
-            f"Scheduler: Error getting Spotify client for user '{user_spotify_id}' via cache {CACHE_PATH}: {e}",
+            f"Error creating Spotify client for user {user_spotify_id}: {e}",
             exc_info=True,
         )
         return None
@@ -77,7 +65,9 @@ def fetch_potentially_due_schedules_from_db(logger):
         logger.debug(f"Fetched {len(schedules)} active schedules.")
         return schedules
     except Exception as e:
-        logger.error(f"Scheduler: Failed to fetch schedules from database: {e}", exc_info=True)
+        logger.error(
+            f"Scheduler: Failed to fetch schedules from database: {e}", exc_info=True
+        )
         return []
 
 
@@ -100,9 +90,14 @@ def perform_spotify_action(sp, schedule, logger):
     try:
         if action == "start_playback":
             if not context_uri:
-                logger.warning(f"Schedule {schedule_id}: Cannot start playback, missing 'playlist_uri'.")
+                logger.warning(
+                    f"Schedule {schedule_id}: Cannot start playback, missing 'playlist_uri'."
+                )
                 return False  # Indicate action failed
-            logger.info(f"Starting playback of {context_uri}" + (f" on device {device_id}" if device_id else ""))
+            logger.info(
+                f"Starting playback of {context_uri}"
+                + (f" on device {device_id}" if device_id else "")
+            )
 
             # Set volume BEFORE starting playback if specified
             if volume is not None:
@@ -111,7 +106,9 @@ def perform_spotify_action(sp, schedule, logger):
                     sp.volume(volume_percent=volume, device_id=device_id)
                     time.sleep(0.5)
                 except SpotifyException as vol_e:
-                    logger.warning(f"Could not set volume for schedule {schedule_id}: {vol_e}")
+                    logger.warning(
+                        f"Could not set volume for schedule {schedule_id}: {vol_e}"
+                    )
                     if vol_e.http_status == 404:
                         return False  # Device not found
 
@@ -119,14 +116,22 @@ def perform_spotify_action(sp, schedule, logger):
             playback_params = {"device_id": device_id, "context_uri": context_uri}
             # *** ADD OFFSET if shuffle is OFF ***
             if not shuffle_enabled:
-                playback_params["offset"] = {"position": 0}  # Start at the first track (index 0)
-                logger.info(f"Setting playback offset to track 0 for schedule {schedule_id} (Shuffle is OFF).")
-            logger.debug(f"Attempting sp.start_playback for schedule {schedule_id} with params: {playback_params}")
+                playback_params["offset"] = {
+                    "position": 0
+                }  # Start at the first track (index 0)
+                logger.info(
+                    f"Setting playback offset to track 0 for schedule {schedule_id} (Shuffle is OFF)."
+                )
+            logger.debug(
+                f"Attempting sp.start_playback for schedule {schedule_id} with params: {playback_params}"
+            )
             sp.start_playback(**playback_params)
             logger.info(f"Playback command sent for schedule {schedule_id}.")
 
             # --- Set Shuffle State Based on Schedule ---
-            logger.info(f"Attempting to set shuffle state to {shuffle_enabled} for schedule {schedule_id}...")
+            logger.info(
+                f"Attempting to set shuffle state to {shuffle_enabled} for schedule {schedule_id}..."
+            )
             try:
                 sleep_duration = 1.5  # Consistent delay
                 time.sleep(sleep_duration)
@@ -147,15 +152,21 @@ def perform_spotify_action(sp, schedule, logger):
                         and current_state.get("device").get("id") == device_id
                     ):
                         api_shuffle_state = current_state.get("shuffle_state", "N/A")
-                        logger.info(f"Checked state {check_delay:.1f}s after shuffle command:")
-                        logger.info(f"  API shuffle_state reported: {api_shuffle_state} (Expected: {shuffle_enabled})")
+                        logger.info(
+                            f"Checked state {check_delay:.1f}s after shuffle command:"
+                        )
+                        logger.info(
+                            f"  API shuffle_state reported: {api_shuffle_state} (Expected: {shuffle_enabled})"
+                        )
                         if api_shuffle_state != shuffle_enabled:
                             logger.warning(
                                 f"  --> Shuffle state mismatch: Command sent for {shuffle_enabled}, but API reports {api_shuffle_state}."
                             )
                     # ... (rest of check logging) ...
                 except Exception as check_e:
-                    logger.warning(f"  Could not verify shuffle state after setting: {check_e}")
+                    logger.warning(
+                        f"  Could not verify shuffle state after setting: {check_e}"
+                    )
 
             except SpotifyException as shuffle_e:
                 logger.warning(
@@ -175,7 +186,9 @@ def perform_spotify_action(sp, schedule, logger):
             return False
 
     except SpotifyException as e:
-        logger.error(f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}")
+        logger.error(
+            f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}"
+        )
         return False
     except Exception as e:
         logger.error(
@@ -185,11 +198,15 @@ def perform_spotify_action(sp, schedule, logger):
         return False
 
     except SpotifyException as e:
-        logger.error(f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}")
+        logger.error(
+            f"Spotify API error during action '{action}' for schedule {schedule_id} (User: {user_id}): {e}"
+        )
         if e.http_status == 404 and "Device not found" in str(e):
             logger.error(f"Device ID '{device_id}' not found or inactive.")
         elif e.http_status == 403:
-            logger.error("Permission error (ensure device isn't private session, check scope).")
+            logger.error(
+                "Permission error (ensure device isn't private session, check scope)."
+            )
         # Handle other specific errors if needed
         return False
     except Exception as e:
@@ -218,13 +235,17 @@ def check_schedules(logger):
 
         # Ensure necessary fields exist
         if not tz_str or not start_time_str:
-            logger.warning(f"[Start Check {schedule_id}]: Skipping - missing timezone or start_time.")
+            logger.warning(
+                f"[Start Check {schedule_id}]: Skipping - missing timezone or start_time."
+            )
             continue
 
         try:
             schedule_tz = pytz.timezone(tz_str)
         except Exception as tz_e:
-            logger.warning(f"[Start Check {schedule_id}]: Error processing timezone '{tz_str}': {tz_e}. Skipping.")
+            logger.warning(
+                f"[Start Check {schedule_id}]: Error processing timezone '{tz_str}': {tz_e}. Skipping."
+            )
             continue
 
         now_local = now_utc.astimezone(schedule_tz)
@@ -242,10 +263,14 @@ def check_schedules(logger):
                 if not schedule.get("play_once_triggered", False):
                     is_due_today = True
                 else:
-                    logger.debug(f"[Start Check {schedule_id}]: Skipping triggered play-once.")
+                    logger.debug(
+                        f"[Start Check {schedule_id}]: Skipping triggered play-once."
+                    )
             else:
                 try:
-                    scheduled_days = {int(day) for day in days_of_week_str.split(",") if day.strip()}
+                    scheduled_days = {
+                        int(day) for day in days_of_week_str.split(",") if day.strip()
+                    }
                     if current_day_local in scheduled_days:
                         is_due_today = True
                 except Exception as day_e:
@@ -260,11 +285,19 @@ def check_schedules(logger):
                 last_triggered_iso = schedule.get("last_triggered_utc")
                 if last_triggered_iso:
                     try:
-                        last_triggered_dt_utc = datetime.fromisoformat(last_triggered_iso.replace("Z", "+00:00"))
-                        current_minute_start_local = now_local.replace(second=0, microsecond=0)
-                        current_minute_start_utc = current_minute_start_local.astimezone(pytz.utc)
+                        last_triggered_dt_utc = datetime.fromisoformat(
+                            last_triggered_iso.replace("Z", "+00:00")
+                        )
+                        current_minute_start_local = now_local.replace(
+                            second=0, microsecond=0
+                        )
+                        current_minute_start_utc = (
+                            current_minute_start_local.astimezone(pytz.utc)
+                        )
                         if last_triggered_dt_utc >= current_minute_start_utc:
-                            logger.info(f"[Start Check {schedule_id}]: Skipping start, already triggered this minute.")
+                            logger.info(
+                                f"[Start Check {schedule_id}]: Skipping start, already triggered this minute."
+                            )
                             continue
                     except Exception as dt_e:
                         logger.warning(
@@ -279,13 +312,19 @@ def check_schedules(logger):
     if not due_to_start_schedules:
         logger.info("Scheduler: No schedules due to START this cycle.")
     else:
-        logger.info(f"Scheduler: Found {len(due_to_start_schedules)} schedule(s) to START.")
+        logger.info(
+            f"Scheduler: Found {len(due_to_start_schedules)} schedule(s) to START."
+        )
 
     for schedule in due_to_start_schedules:
         user_spotify_id = schedule["user_spotify_id"]
         schedule_id = schedule["id"]
-        is_play_once = schedule["days_of_week"] == "" or schedule["days_of_week"] is None
-        logger.info(f"Scheduler: Processing START for schedule ID {schedule_id} user {user_spotify_id}...")
+        is_play_once = (
+            schedule["days_of_week"] == "" or schedule["days_of_week"] is None
+        )
+        logger.info(
+            f"Scheduler: Processing START for schedule ID {schedule_id} user {user_spotify_id}..."
+        )
         sp = get_scheduler_spotify_client(user_spotify_id, logger)
         if sp:
             action_success = perform_spotify_action(sp, schedule, logger)
@@ -293,17 +332,25 @@ def check_schedules(logger):
                 try:
                     trigger_time_for_db = datetime.now(pytz.utc)
                     database.update_schedule_trigger_info(
-                        schedule_id, trigger_time_for_db.isoformat(), played_once=is_play_once
+                        schedule_id,
+                        trigger_time_for_db.isoformat(),
+                        played_once=is_play_once,
                     )
                     logger.info(
                         f"Updated trigger info for schedule {schedule_id} at {trigger_time_for_db.isoformat()}."
                     )
                 except Exception as db_e:
-                    logger.error(f"Failed to update trigger info for schedule {schedule_id}: {db_e}")
+                    logger.error(
+                        f"Failed to update trigger info for schedule {schedule_id}: {db_e}"
+                    )
             else:
-                logger.warning(f"Spotify start action failed for schedule {schedule_id}. Trigger info not updated.")
+                logger.warning(
+                    f"Spotify start action failed for schedule {schedule_id}. Trigger info not updated."
+                )
         else:
-            logger.warning(f"Scheduler: Skipping START action for schedule {schedule_id} - could not get client.")
+            logger.warning(
+                f"Scheduler: Skipping START action for schedule {schedule_id} - could not get client."
+            )
 
     # --- Part 2: Check for Schedules to STOP ---
     logger.debug("--- Checking schedules to STOP ---")
@@ -316,7 +363,9 @@ def check_schedules(logger):
         stop_time_str = schedule.get("stop_time_local")
         device_id = schedule.get("target_device_id")
         tz_str = schedule.get("timezone")
-        playlist_uri_to_match = schedule.get("playlist_uri")  # Get playlist URI for check
+        playlist_uri_to_match = schedule.get(
+            "playlist_uri"
+        )  # Get playlist URI for check
 
         # Only proceed if stop_time, device_id, tz_str exist
         if stop_time_str and device_id and tz_str:
@@ -349,12 +398,19 @@ def check_schedules(logger):
                                 current_context = current_state.get("context")
                                 current_item = current_state.get("item")
 
-                                if current_device and current_device.get("id") == device_id:
+                                if (
+                                    current_device
+                                    and current_device.get("id") == device_id
+                                ):
                                     logger.info(
                                         f"[Stop Check {schedule_id}]: Playback is active on the target device ({device_id})."
                                     )
                                     # Optional but Recommended: Check if the context matches the schedule's playlist
-                                    if current_context and current_context.get("uri") == playlist_uri_to_match:
+                                    if (
+                                        current_context
+                                        and current_context.get("uri")
+                                        == playlist_uri_to_match
+                                    ):
                                         logger.info(
                                             f"[Stop Check {schedule_id}]: Playback context ({playlist_uri_to_match}) matches. Proceeding with pause."
                                         )
@@ -365,9 +421,15 @@ def check_schedules(logger):
                                         logger.warning(
                                             f"[Stop Check {schedule_id}]: Playing a track directly (no playlist context). Pausing based on device match."
                                         )
-                                        should_pause = True  # Decide if you want this behaviour
+                                        should_pause = (
+                                            True  # Decide if you want this behaviour
+                                        )
                                     else:
-                                        context_uri_playing = current_context.get("uri") if current_context else "None"
+                                        context_uri_playing = (
+                                            current_context.get("uri")
+                                            if current_context
+                                            else "None"
+                                        )
                                         logger.info(
                                             f"[Stop Check {schedule_id}]: Skipping pause - "
                                             f"playback context ({context_uri_playing}) does not match "
@@ -389,7 +451,9 @@ def check_schedules(logger):
                                 )
                                 try:
                                     sp_stop.pause_playback(device_id=device_id)
-                                    logger.info(f"Pause command sent successfully for schedule {schedule_id}.")
+                                    logger.info(
+                                        f"Pause command sent successfully for schedule {schedule_id}."
+                                    )
                                     # NOTE: Still might send pause multiple times if interval < 1 min
                                 except SpotifyException as pause_e:
                                     logger.warning(
@@ -418,11 +482,18 @@ def check_schedules(logger):
                 #      pass
 
             except pytz.UnknownTimeZoneError:
-                logger.warning(f"[Stop Check {schedule_id}]: Skipping stop check due to unknown timezone '{tz_str}'.")
+                logger.warning(
+                    f"[Stop Check {schedule_id}]: Skipping stop check due to unknown timezone '{tz_str}'."
+                )
             except Exception as e:
-                logger.error(f"[Stop Check {schedule_id}]: Error during stop check: {e}", exc_info=True)
+                logger.error(
+                    f"[Stop Check {schedule_id}]: Error during stop check: {e}",
+                    exc_info=True,
+                )
 
     if due_to_stop_schedules_count == 0:
-        logger.info("Scheduler: No schedules potentially due to STOP this cycle.")  # Adjusted message
+        logger.info(
+            "Scheduler: No schedules potentially due to STOP this cycle."
+        )  # Adjusted message
 
     logger.info("Scheduler: check_schedules job finished.")
