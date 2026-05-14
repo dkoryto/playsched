@@ -1,5 +1,19 @@
 // static/js/app.js
 
+function showToast(message, type = 'success', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- Global Variables ---
     let allPlaylists = []; // Stores the complete list fetched from backend
@@ -436,13 +450,13 @@ document.addEventListener('DOMContentLoaded', () => {
              console.log(`Playing schedule ${scheduleId} now...`);
              button.textContent = "Playing..."; button.disabled = true;
              const result = await fetchData(`/api/schedules/${scheduleId}/play_now`, { method: 'POST' });
-             if (result) { setTimeout(() => { alert(result.message || "Playback initiated."); button.textContent = "Play Now"; button.disabled = false; }, 500); }
+             if (result) { setTimeout(() => { showToast(result.message || "Playback initiated", "success"); button.textContent = "Play Now"; button.disabled = false; }, 500); }
              else { button.textContent = "Play Now"; button.disabled = false; }
          } else if (button.classList.contains('stop-now-btn')) {
              console.log(`Stopping schedule ${scheduleId} now...`);
              button.textContent = "Stopping..."; button.disabled = true;
              const result = await fetchData(`/api/schedules/${scheduleId}/stop_now`, { method: 'POST' });
-             if (result) { setTimeout(() => { alert(result.message || "Playback stopped."); button.textContent = "Stop Now"; button.disabled = false; }, 500); }
+             if (result) { setTimeout(() => { showToast(result.message || "Playback stopped", "info"); button.textContent = "Stop Now"; button.disabled = false; }, 500); }
              else { button.textContent = "Stop Now"; button.disabled = false; }
          } else if (button.classList.contains('toggle-active-btn')) {
               console.log(`Toggling schedule ${scheduleId}...`);
@@ -564,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
          fetchData('/api/play_now', { method: 'POST', body: JSON.stringify({ playlist_uri: playlistUri, device_id: deviceId, volume: volume }) })
          .then(result => {
-              if (result) { setTimeout(() => { alert(result.message || "Playback initiated."); playNowFormButton.textContent = "Play Now"; playNowFormButton.disabled = false; }, 500); }
+              if (result) { setTimeout(() => { showToast(result.message || "Playback initiated", "success"); playNowFormButton.textContent = "Play Now"; playNowFormButton.disabled = false; }, 500); }
               else { playNowFormButton.textContent = "Play Now"; playNowFormButton.disabled = false; }
          });
     }
