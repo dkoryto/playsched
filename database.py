@@ -40,7 +40,67 @@ def create_tables():
             )
         """
         )
-        # Removed the ALTER TABLE block
+        # --- CLI/HISTORY tables ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS playback_history (
+                played_at TEXT PRIMARY KEY,
+                track_id TEXT NOT NULL,
+                track_name TEXT,
+                track_uri TEXT,
+                artist_names TEXT,
+                album_name TEXT,
+                context_type TEXT,
+                context_uri TEXT
+            )
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS synced_playlists (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                uri TEXT,
+                owner_display_name TEXT,
+                api_total_tracks INTEGER,
+                retrieved_at TEXT NOT NULL,
+                is_removed_from_spotify BOOLEAN DEFAULT 0
+            )
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS synced_playlist_tracks (
+                playlist_id TEXT NOT NULL,
+                track_id TEXT NOT NULL,
+                track_name TEXT,
+                artist_names TEXT,
+                track_uri TEXT,
+                position INTEGER,
+                added_to_playlist_at_spotify TEXT,
+                last_seen_in_api_sync_at TEXT NOT NULL,
+                is_removed_from_playlist BOOLEAN DEFAULT 0,
+                PRIMARY KEY (playlist_id, track_id),
+                FOREIGN KEY (playlist_id) REFERENCES synced_playlists(id) ON DELETE CASCADE
+            )
+        """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_synced_playlist_tracks_playlist_id "
+            "ON synced_playlist_tracks (playlist_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_synced_playlists_is_removed "
+            "ON synced_playlists (is_removed_from_spotify)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_synced_playlist_tracks_removed "
+            "ON synced_playlist_tracks (is_removed_from_playlist)"
+        )
+        # --- end CLI/HISTORY tables ---
+
         conn.commit()
         print("Database tables checked/created.")
     except sqlite3.Error as e:
@@ -98,7 +158,9 @@ def get_all_schedules(user_spotify_id):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM schedules WHERE user_spotify_id = ?", (user_spotify_id,))
+        cursor.execute(
+            "SELECT * FROM schedules WHERE user_spotify_id = ?", (user_spotify_id,)
+        )
         schedules = [dict(row) for row in cursor.fetchall()]
         return schedules
     except sqlite3.Error as e:
@@ -113,7 +175,10 @@ def get_schedule_by_id(schedule_id, user_spotify_id):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM schedules WHERE id = ? AND user_spotify_id = ?", (schedule_id, user_spotify_id))
+        cursor.execute(
+            "SELECT * FROM schedules WHERE id = ? AND user_spotify_id = ?",
+            (schedule_id, user_spotify_id),
+        )
         schedule = cursor.fetchone()
         return dict(schedule) if schedule else None
     except sqlite3.Error as e:
@@ -152,7 +217,9 @@ def update_schedule(schedule_id, user_spotify_id, data):
     if not fields:
         return False  # Nothing to update
 
-    sql = f"UPDATE schedules SET {', '.join(fields)} WHERE id = ? AND user_spotify_id = ?"
+    sql = (
+        f"UPDATE schedules SET {', '.join(fields)} WHERE id = ? AND user_spotify_id = ?"
+    )
     values.extend([schedule_id, user_spotify_id])
 
     conn = get_db_connection()
@@ -238,7 +305,8 @@ def update_schedule_trigger_info(schedule_id, trigger_time_utc_iso, played_once=
             )
         else:
             cursor.execute(
-                "UPDATE schedules SET last_triggered_utc = ? WHERE id = ?", (trigger_time_utc_iso, schedule_id)
+                "UPDATE schedules SET last_triggered_utc = ? WHERE id = ?",
+                (trigger_time_utc_iso, schedule_id),
             )
         conn.commit()
     except sqlite3.Error as e:

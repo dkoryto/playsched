@@ -2,8 +2,11 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
 from dotenv import load_dotenv
-from flask import session, current_app  # Use Flask session for token storage
+from flask import session  # Use Flask session for token storage
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -25,7 +28,9 @@ auth_manager = SpotifyOAuth(
     cache_path=CACHE_PATH,  # Don't use file cache for web app, rely on session
 )
 
-print(f"SpotifyOAuth initialized with redirect_uri: {os.getenv('SPOTIPY_REDIRECT_URI')}")
+print(
+    f"SpotifyOAuth initialized with redirect_uri: {os.getenv('SPOTIPY_REDIRECT_URI')}"
+)
 
 
 def get_auth_url():
@@ -43,10 +48,12 @@ def get_token_from_code(code):
         sp = spotipy.Spotify(auth=token_info["access_token"])
         user_info = sp.current_user()
         session["spotify_user_id"] = user_info["id"]
-        session["spotify_user_display_name"] = user_info.get("display_name", user_info["id"])
+        session["spotify_user_display_name"] = user_info.get(
+            "display_name", user_info["id"]
+        )
         return True
     except Exception as e:
-        current_app.logger.error(f"Error getting token from code: {e}")
+        logger.error(f"Error getting token from code: {e}")
         return False
 
 
@@ -57,15 +64,17 @@ def get_refreshed_token():
         return None  # User not authenticated
 
     now = int(time.time())
-    is_expired = token_info["expires_at"] - now < 60  # Refresh if expires in < 60 seconds
+    is_expired = (
+        token_info["expires_at"] - now < 60
+    )  # Refresh if expires in < 60 seconds
 
     if is_expired:
         try:
             token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
             session["spotify_token_info"] = token_info
-            current_app.logger.info("Spotify token refreshed.")
+            logger.info("Spotify token refreshed.")
         except Exception as e:
-            current_app.logger.error(f"Error refreshing token: {e}")
+            logger.error(f"Error refreshing token: {e}")
             # Could potentially redirect to login here if refresh fails badly
             session.pop("spotify_token_info", None)
             session.pop("spotify_user_id", None)
@@ -82,7 +91,7 @@ def get_spotify_client():
     try:
         return spotipy.Spotify(auth=token_info["access_token"])
     except Exception as e:
-        current_app.logger.error(f"Error creating spotipy client: {e}")
+        logger.error(f"Error creating spotipy client: {e}")
         return None
 
 
@@ -112,13 +121,15 @@ def get_all_user_playlists(sp):
             else:
                 break  # No more pages
         except spotipy.exceptions.SpotifyException as e:
-            current_app.logger.error(f"Spotify API error fetching playlists page (offset={offset}): {e.msg}")
+            logger.error(
+                f"Spotify API error fetching playlists page (offset={offset}): {e.msg}"
+            )
             return None  # Indicate error if any page fails
         except Exception as e:
-            current_app.logger.error(f"Error fetching user playlists page (offset={offset}): {e}")
+            logger.error(f"Error fetching user playlists page (offset={offset}): {e}")
             return None  # Indicate error
     # Successfully fetched all pages
-    current_app.logger.info(f"Fetched a total of {len(all_playlists)} playlists.")
+    logger.info(f"Fetched a total of {len(all_playlists)} playlists.")
     return all_playlists
 
 
@@ -129,18 +140,18 @@ def start_playback(sp, device_id, playlist_uri, volume=None):
     try:
         context_uri = playlist_uri  # Assuming URI is passed
         sp.start_playback(device_id=device_id, context_uri=context_uri)
-        current_app.logger.info(f"Playback started: {playlist_uri} on {device_id}")
+        logger.info(f"Playback started: {playlist_uri} on {device_id}")
         # Set volume *after* starting playback
         if volume is not None and isinstance(volume, int) and 0 <= volume <= 100:
             time.sleep(1)  # Short delay might help ensure playback has started
             try:
                 sp.volume(volume, device_id=device_id)
-                current_app.logger.info(f"Volume set to {volume} on {device_id}")
+                logger.info(f"Volume set to {volume} on {device_id}")
             except Exception as vol_e:
-                current_app.logger.warning(f"Could not set volume after starting playback: {vol_e}")
+                logger.warning(f"Could not set volume after starting playback: {vol_e}")
         return True
     except Exception as e:
-        current_app.logger.error(f"Error starting playback: {e}")
+        logger.error(f"Error starting playback: {e}")
         return False
 
 
@@ -151,18 +162,18 @@ def stop_playback(sp, device_id):
         return False
     try:
         sp.pause_playback(device_id=device_id)
-        current_app.logger.info(f"Playback paused (stopped) on device {device_id}")
+        logger.info(f"Playback paused (stopped) on device {device_id}")
         return True
     except Exception as e:
         # Handle specific errors e.g., if device not found or playback not active
-        current_app.logger.error(f"Error pausing playback on {device_id}: {e}")
+        logger.error(f"Error pausing playback on {device_id}: {e}")
         return False
 
 
 def get_user_devices(sp):
     """Gets available playback devices for the current user."""
     if not sp:
-        current_app.logger.error("get_user_devices called without valid sp client")
+        logger.error("get_user_devices called without valid sp client")
         return None  # Indicate error: No client
     try:
         # Call the spotipy method to get devices
@@ -173,14 +184,20 @@ def get_user_devices(sp):
             return devices_info["devices"]  # Return the list of device objects
         else:
             # Log if the structure is weird or if the 'devices' key is missing/not a list
-            current_app.logger.warning(f"sp.devices() returned unexpected structure or no devices list: {devices_info}")
+            logger.warning(
+                f"sp.devices() returned unexpected structure or no devices list: {devices_info}"
+            )
             return []  # Return empty list - consistent with no devices found
 
     except spotipy.exceptions.SpotifyException as e:
         # Log Spotify specific errors (like auth issues, rate limits, bad requests)
-        current_app.logger.error(f"Spotify API error fetching devices: {e.msg} (HTTP Status: {e.http_status})")
+        logger.error(
+            f"Spotify API error fetching devices: {e.msg} (HTTP Status: {e.http_status})"
+        )
         return None  # Indicate error: API error
     except Exception as e:
         # Log other unexpected errors during the process
-        current_app.logger.error(f"Unexpected error fetching user devices: {e}", exc_info=True)  # Log traceback
+        logger.error(
+            f"Unexpected error fetching user devices: {e}", exc_info=True
+        )  # Log traceback
         return None  # Indicate error: Other error
