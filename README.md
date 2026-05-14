@@ -4,7 +4,7 @@
 
 ![App Icon](static/android-chrome-192x192.png)
 
-[Version History](VERSION.md) - Current Version: v0.1.1 - 2 Jun 2025
+[Version History](VERSION.md) - Current Version: v0.2.0 - 14 May 2026
 
 [Roadmap](ROADMAP.md)
 
@@ -38,6 +38,9 @@ This will evolve over time. Currently, it is scratching an itch - I realised tha
     * Edit existing schedules.
     * Duplicate existing schedules to easily create variations.
     * Delete schedules.
+* **Now Playing Widget:** Real-time display of the currently playing track (title, artist, album cover, progress bar with elapsed/total time), active device name, and the next upcoming track. Updates dynamically every 5 seconds.
+* **Live Clock:** Current date and time displayed prominently in the header, with ticking seconds and a clean monospace font.
+* **Dark Mode:** Full dark/light theme toggle with system preference detection. Theme preference is persisted in `localStorage`.
 * **Background Scheduler:** Uses APScheduler to automatically start/stop playback according to the defined schedules.
 
 ### Command-Line Script (`play_spotify_playlist.py`) Features

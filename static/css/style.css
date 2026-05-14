@@ -1,384 +1,1005 @@
-/* static/css/style.css */
+/* static/css/style.css - Modern UI/UX 2025 */
 
-/* --- General Styles --- */
+/* ============================================
+   CSS VARIABLES & THEME
+   ============================================ */
+:root {
+    --bg-primary: #f0f2f5;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-glass: rgba(255, 255, 255, 0.7);
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a4a68;
+    --text-muted: #7a7a9a;
+    --accent: #1DB954;
+    --accent-hover: #1ed760;
+    --accent-light: #e6f9ed;
+    --danger: #e74c3c;
+    --danger-hover: #c0392b;
+    --warning: #f39c12;
+    --warning-hover: #e68a00;
+    --info: #3498db;
+    --info-hover: #2980b9;
+    --border: rgba(0, 0, 0, 0.08);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 12px 24px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.04);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --transition-fast: 0.15s ease;
+    --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.dark-mode {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-card: #1e1e32;
+    --bg-glass: rgba(30, 30, 50, 0.7);
+    --text-primary: #f0f0f5;
+    --text-secondary: #b0b0c8;
+    --text-muted: #8080a0;
+    --accent: #1ed760;
+    --accent-hover: #2ef070;
+    --accent-light: rgba(30, 215, 96, 0.15);
+    --border: rgba(255, 255, 255, 0.08);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+    --shadow-lg: 0 12px 24px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* ============================================
+   BASE & RESET
+   ============================================ */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
 body {
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    margin: 20px;
-    background-color: #f8f8f8; /* Slightly off-white background */
-    color: #333; /* Darker text for better readability */
-}
-
-h1, h2, h3 {
-    color: #1DB954; /* Spotify Green */
-    margin-bottom: 0.8em;
-}
-h1 { font-size: 2em; }
-h2 { font-size: 1.5em; margin-top: 1.5em;}
-h3 { font-size: 1.2em; }
-
-ul {
-    list-style: none;
-    padding: 0;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     margin: 0;
+    padding: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+    transition: background-color var(--transition-slow), color var(--transition-slow);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- Buttons --- */
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+h1, h2, h3 {
+    color: var(--accent);
+    margin: 0 0 0.6em 0;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; margin-top: 0; }
+h3 { font-size: 1.15rem; }
+
+/* ============================================
+   HEADER
+   ============================================ */
+.header-container {
+    display: flex;
+    align-items: center;
+    padding: 20px 32px;
+    margin-bottom: 24px;
+    gap: 20px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    transition: background-color var(--transition-slow);
+}
+
+.header-icon img {
+    display: block;
+    height: 56px;
+    width: auto;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.header-content {
+    flex-grow: 1;
+}
+
+.header-content h1 {
+    margin: 0 0 4px 0;
+    font-size: 1.6rem;
+}
+
+#auth-section p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.header-clock {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding-left: 20px;
+}
+
+#live-clock {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* ============================================
+   MAIN LAYOUT
+   ============================================ */
+#main-app {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 48px;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
 button {
-    padding: 8px 15px;
-    margin: 5px;
+    padding: 10px 20px;
+    margin: 0;
     cursor: pointer;
-    background-color: #1DB954;
+    background: linear-gradient(135deg, var(--accent), #16a34a);
     color: white;
     border: none;
-    border-radius: 20px; /* Pill shape */
-    font-size: 0.9em;
-    transition: background-color 0.2s ease; /* Smooth hover */
+    border-radius: var(--radius-xl);
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all var(--transition-base);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+}
+
+button::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    pointer-events: none;
 }
 
 button:hover {
-    background-color: #1ed760; /* Slightly lighter green */
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+button:hover::after {
+    opacity: 1;
+}
+
+button:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
 }
 
 button:disabled {
-    background-color: #ccc;
+    background: #a0a0b0;
     cursor: not-allowed;
-    opacity: 0.7;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
 }
 
-/* Specific Button Styles */
-
+/* Specific buttons */
 #logout-button {
-    background-color: #aaa;
-    font-size: 0.8em;
-    padding: 5px 10px;
-    margin-left: 10px;
-    vertical-align: middle; /* Align better with text */
-}
-#logout-button:hover {
-     background-color: #ccc;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+    padding: 6px 14px;
+    font-weight: 500;
 }
 
-.delete-schedule-btn {
-    background-color: #e74c3c; /* Softer Red */
+#logout-button:hover {
+    background: var(--danger);
+    color: white;
+    border-color: var(--danger);
 }
-.delete-schedule-btn:hover {
-    background-color: #c0392b;
+
+#login-button {
+    padding: 12px 28px;
+    font-size: 1rem;
+}
+
+#theme-toggle {
+    background: transparent;
+    color: var(--warning);
+    font-size: 1.2rem;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+}
+
+#theme-toggle:hover {
+    background: rgba(243, 156, 18, 0.1);
+    transform: scale(1.1);
+}
+
+/* Action buttons */
+.delete-schedule-btn {
+    background: linear-gradient(135deg, var(--danger), #c0392b);
 }
 
 .edit-schedule-btn {
-    background-color: #f39c12; /* Softer Orange */
-}
-.edit-schedule-btn:hover {
-    background-color: #e68a00;
+    background: linear-gradient(135deg, var(--warning), #e68a00);
 }
 
-/* Style for the new duplicate button */
 .duplicate-schedule-btn {
-   background-color: #95a5a6; /* Grey */
-   color: white;
-}
-.duplicate-schedule-btn:hover {
-   background-color: #7f8c8d; /* Darker Grey */
+    background: linear-gradient(135deg, #8e9aaf, #6c7a89);
 }
 
 .toggle-active-btn {
-     background-color: #3498db; /* Blue */
-}
-.toggle-active-btn:hover {
-     background-color: #2980b9;
+    background: linear-gradient(135deg, var(--info), #2980b9);
 }
 
 .play-now-btn {
-    background-color: #2ecc71; /* Different Green */
-}
-.play-now-btn:hover {
-     background-color: #27ae60;
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
 }
 
-/* --- Tabs --- */
+.stop-now-btn {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
+/* ============================================
+   TABS
+   ============================================ */
 .tab-container {
-    border-bottom: 1px solid #ddd;
-    margin-bottom: 20px;
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    padding: 4px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    position: relative;
 }
 
 .tab-button {
-    padding: 10px 15px;
-    border: 1px solid transparent; /* Add border for structure */
-    border-bottom: none;
-    background-color: #eee;
+    flex: 1;
+    padding: 12px 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
     cursor: pointer;
-    margin-right: 3px;
-    margin-bottom: -1px; /* Overlap container border */
-    border-radius: 5px 5px 0 0;
-    font-size: 0.95em;
-    color: #555;
+    border-radius: var(--radius-lg);
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all var(--transition-base);
+    position: relative;
+    z-index: 1;
+    box-shadow: none;
+}
+
+.tab-button:hover {
+    color: var(--text-primary);
+    background: rgba(0,0,0,0.03);
+    transform: none;
+    box-shadow: none;
+}
+
+body.dark-mode .tab-button:hover {
+    background: rgba(255,255,255,0.05);
 }
 
 .tab-button.active {
-    background-color: white; /* Match content background */
-    border-color: #ddd; /* Connect borders */
-    font-weight: bold;
-    color: #1DB954;
+    color: white;
+    background: linear-gradient(135deg, var(--accent), #16a34a);
+    box-shadow: var(--shadow-sm);
 }
 
+.tab-button.active:hover {
+    color: white;
+    background: linear-gradient(135deg, var(--accent), #16a34a);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+/* Tab content */
 .tab-content {
-    display: none; /* Hide tabs by default */
-    padding: 20px;
-    border: 1px solid #ddd;
-    border-top: none;
-    background-color: white; /* White background for content */
-    border-radius: 0 0 5px 5px; /* Match tab radius */
+    display: none;
+    animation: fadeInUp 0.4s ease;
 }
 
 .tab-content.active {
-    display: block; /* Show active tab */
+    display: block;
 }
 
-/* --- Playlist List --- */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ============================================
+   PLAYLIST LIST (Cards)
+   ============================================ */
+#playlist-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
 #playlist-list li {
-    padding: 8px 12px;
-    margin-bottom: 5px;
-    border: 1px solid #eee;
-    border-radius: 4px;
-    background-color: white;
-    display: flex; /* Align items */
-    justify-content: space-between; /* Push button to right */
+    padding: 14px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-}
-#playlist-list button.add-schedule-btn {
-    margin: 0; /* Remove default button margin */
-    padding: 4px 10px; /* Smaller padding */
-    font-size: 0.8em;
+    transition: all var(--transition-base);
 }
 
-/* --- Schedule List --- */
+#playlist-list li:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(29, 185, 84, 0.2);
+}
+
+#playlist-list li span {
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 12px;
+}
+
+#playlist-list button.add-schedule-btn {
+    margin: 0;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ============================================
+   SCHEDULE LIST (Cards)
+   ============================================ */
+#schedule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 #schedule-list li {
-    border: 1px solid #e0e0e0; /* Softer border */
-    margin-bottom: 15px;
-    padding: 15px;
-    border-radius: 5px;
-    background-color: white;
-    line-height: 1.5; /* Improve readability */
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+#schedule-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+    pointer-events: none;
+}
+
+#schedule-list li:hover::before {
+    opacity: 1;
+}
+
+#schedule-list li:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
 }
 
 .schedule-header {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
+
 .schedule-header strong {
-    /* Playlist Name */
-    font-size: 1.2em;
-    color: #333;
-    display: block; /* Ensure it takes its own line if needed */
-    margin-bottom: 2px;
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 4px;
 }
+
 .schedule-device {
-    /* "on Device Name" */
-    font-size: 0.9em;
-    color: #555;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.schedule-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
 }
 
 .schedule-details span {
-    /* Time, Days, Volume */
-    margin-right: 15px; /* Space between details */
-    font-size: 0.9em;
-    color: #444;
-    white-space: nowrap; /* Prevent wrapping mid-detail */
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: rgba(0,0,0,0.03);
+    padding: 3px 10px;
+    border-radius: var(--radius-xl);
+    white-space: nowrap;
 }
-.schedule-details {
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #f0f0f0; /* Faint separator */
+
+body.dark-mode .schedule-details span {
+    background: rgba(255,255,255,0.05);
 }
 
 .schedule-status-line {
-    margin-bottom: 4px; /* Space between status/next run lines */
-    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
 }
 
 .schedule-info-label {
-    /* "Status:", "Next Run:" */
-    color: #666;
-    display: inline-block; /* Allow inline display */
-    min-width: 70px; /* Align values slightly */
+    color: var(--text-muted);
+    min-width: 70px;
+    font-weight: 500;
 }
 
-/* Specific Status Styles - RENAMED */
 .schedule-status {
-    font-weight: bold;
-    padding: 2px 5px; /* Add a little padding */
-    border-radius: 3px;
-    display: inline-block; /* Allow inline display */
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--radius-xl);
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
-.schedule-status.status-active { /* Renamed from .active */
-    color: #27ae60; /* Darker Green */
-    background-color: #eafaf1; /* Light green background */
+
+.schedule-status.status-active {
+    color: #16a34a;
+    background: var(--accent-light);
 }
-.schedule-status.status-paused { /* Renamed from .paused */
-    color: #d35400; /* Darker Orange */
-     background-color: #fef5e7; /* Light orange background */
+
+.schedule-status.status-paused {
+    color: #d97706;
+    background: rgba(217, 119, 6, 0.12);
 }
+
+body.dark-mode .schedule-status.status-paused {
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.schedule-status.status-active::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: #16a34a;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+}
+
 .schedule-next-run {
-     color: #2980b9; /* Blue */
-     font-weight: bold;
+    color: var(--info);
+    font-weight: 600;
 }
 
-
-/* Schedule Action Buttons Container */
 .schedule-actions {
-    margin-top: 12px;
-    border-top: 1px dashed #eee;
-    padding-top: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
-/* Styling for buttons within the actions div */
+
 .schedule-actions button {
-     font-size: 0.8em;
-     margin-top: 0; /* Remove top margin inherited from global button */
-     margin-right: 5px;
-     padding: 4px 10px; /* Slightly smaller */
-     border-radius: 15px;
-     min-width: 70px; /* Give buttons similar width */
-     text-align: center;
+    font-size: 0.8rem;
+    padding: 6px 14px;
+    border-radius: var(--radius-xl);
+    min-width: unset;
 }
 
-
-/* --- Schedule Form --- */
+/* ============================================
+   SCHEDULE FORM
+   ============================================ */
 #schedule-form-container {
-    border: 1px solid #ccc;
-    padding: 20px;
-    margin-top: 20px;
-    background-color: #fff;
-    border-radius: 5px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    margin-top: 24px;
+    box-shadow: var(--shadow-lg);
+    animation: fadeInUp 0.4s ease;
 }
+
 #schedule-form-container label {
-    display: block; /* Make labels block for better spacing */
-    margin-top: 12px;
-    margin-bottom: 4px;
-    font-weight: bold;
-    font-size: 0.9em;
+    display: block;
+    margin-top: 16px;
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
+
 #schedule-form-container input[type="time"],
 #schedule-form-container input[type="number"],
 #schedule-form-container input[type="text"],
 input[type="search"],
 #schedule-form-container select {
-     padding: 8px; /* More padding */
-     margin-bottom: 8px;
-     border: 1px solid #ccc;
-     border-radius: 4px;
-     width: 95%; /* Make inputs wider */
-     max-width: 400px; /* But not too wide */
+    padding: 12px 14px;
+    margin-bottom: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    width: 100%;
+    max-width: 420px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: all var(--transition-base);
+    outline: none;
 }
+
+#schedule-form-container input:focus,
+#schedule-form-container select:focus,
+input[type="search"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.15);
+}
+
+body.dark-mode #schedule-form-container input:focus,
+body.dark-mode #schedule-form-container select:focus,
+body.dark-mode input[type="search"]:focus {
+    box-shadow: 0 0 0 3px rgba(30, 215, 96, 0.2);
+}
+
 input[type="search"] {
-    margin-top:8px;
+    margin-top: 0;
 }
+
 #schedule-form-container select {
-     width: auto; /* Selects often don't need full width */
-     min-width: 200px;
+    width: auto;
+    min-width: 220px;
+    cursor: pointer;
 }
 
 #schedule-form-container div {
-    margin-bottom: 15px; /* More space between form groups */
+    margin-bottom: 4px;
 }
-/* Style day checkboxes */
+
 #schedule-form-container input[type="checkbox"] {
-     margin-right: 5px;
-     vertical-align: middle;
+    margin-right: 6px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
 }
-#schedule-form-container label[for^="day-"] { /* Labels next to checkboxes */
-     display: inline-block;
-     margin-right: 10px;
-     font-weight: normal;
+
+#schedule-form-container label[for^="day-"] {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 14px;
+    font-weight: 500;
+    text-transform: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
 }
+
 #schedule-form-container .day-selector-actions button {
-     font-size: 0.8em;
-     padding: 3px 8px;
-     margin-left: 5px;
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    margin-left: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
 }
 
-
-/* --- Playlist Controls/Pagination --- */
-.controls { /* Container for refresh button and search */
-     margin-bottom: 15px;
-     display: flex;
-     align-items: center;
+#schedule-form-container .day-selector-actions button:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
 }
+
+#schedule-form-container .form-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+#schedule-form-container .form-check label {
+    display: inline;
+    margin: 0;
+    font-weight: 500;
+    text-transform: none;
+    color: var(--text-secondary);
+}
+
+#schedule-form-container .form-check input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+}
+
+#play-now-form-button {
+    margin-left: 12px;
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+}
+
+/* ============================================
+   CONTROLS & PAGINATION
+   ============================================ */
+.controls {
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
 .controls input[type="search"] {
-     padding: 8px;
-     border: 1px solid #ccc;
-     border-radius: 4px;
-     margin-left: 15px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    min-width: 240px;
 }
-
 
 .pagination-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 5px;
-    margin-top: 15px;
-    border-top: 1px solid #eee;
+    padding: 16px 8px;
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
 }
 
 .pagination-controls button {
-    padding: 5px 10px;
-    font-size: 0.9em;
+    padding: 8px 16px;
+    font-size: 0.85rem;
 }
 
 #playlist-page-info {
-    font-size: 0.9em;
-    color: #555;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
 }
 
-#schedule-form-container .form-check label {
-    display: inline-block;  /* Override display: block */
-    font-weight: normal;    /* Override general label bold */
-    margin-bottom: 0;       /* Override general label margin */
-    margin-top: 0;          /* Override general label margin */
-    vertical-align: middle; /* Align with checkbox */
-    margin-left: 5px;       /* Space after checkbox */
+/* ============================================
+   LIVE CLOCK
+   ============================================ */
+#live-clock {
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
 }
 
-/* More specific rule for the shuffle checkbox */
-#schedule-form-container .form-check input[type="checkbox"] {
-   width: auto;             /* Override general input width */
-   vertical-align: middle;  /* Align with label */
-   margin-right: 5px;       /* Reset (or set space before label) */
-   /* Reset potentially inherited styles that might cause issues */
-   padding: initial;
-   margin-bottom: 0;
-   margin-top: 0;
-   display: inline-block; /* Ensure checkbox itself is inline */
+/* ============================================
+   ANIMATIONS & UTILITIES
+   ============================================ */
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
-.header-container {
-    display: flex;          /* Arrange icon and content side-by-side */
-    align-items: center;    /* Vertically align items in the middle */
-    margin-bottom: 25px;    /* Space below the header */
-    padding-bottom: 15px;   /* Space before potential border */
-    border-bottom: 1px solid #eee; /* Optional separator line */
-    gap: 20px;              /* Space between icon and text content */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
 }
 
-.header-icon img {
-    display: block;         /* Removes extra space below image */
-    height: 70px;           /* Set desired height for the icon */
-    width: auto;            /* Maintain aspect ratio */
-    max-width: 100%;        /* Prevent overflow if container is too small */
+/* Empty states */
+#playlist-list li:only-child,
+#schedule-list li:only-child {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px;
+    font-style: italic;
+    background: transparent;
+    border: 2px dashed var(--border);
+    box-shadow: none;
 }
 
-.header-content {
-    flex-grow: 1;           /* Allow text content to take remaining space */
+#playlist-list li:only-child:hover,
+#schedule-list li:only-child:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--border);
 }
 
-/* Adjust margin for h1 inside the new structure if needed */
-.header-content h1 {
-    margin-bottom: 0.4em; /* Reduce space below h1 */
-    margin-top: 0;      /* Remove potential top margin */
-    font-size: 1.8em;   /* Slightly smaller H1 might fit better */
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 640px) {
+    .header-container {
+        padding: 16px 20px;
+        flex-wrap: wrap;
+    }
+
+    .header-clock {
+        width: 100%;
+        padding-left: 0;
+        padding-top: 8px;
+        justify-content: flex-start;
+    }
+
+    #live-clock {
+        font-size: 1.1rem;
+    }
+
+    .header-content h1 {
+        font-size: 1.3rem;
+    }
+    
+    #main-app {
+        padding: 0 16px 32px;
+    }
+    
+    #playlist-list {
+        grid-template-columns: 1fr;
+    }
+    
+    .schedule-actions {
+        gap: 6px;
+    }
+    
+    .schedule-actions button {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+    }
+    
+    .tab-button {
+        padding: 10px 16px;
+        font-size: 0.85rem;
+    }
+    
+    #schedule-form-container {
+        padding: 20px;
+    }
 }
 
-/* Adjust margin for auth section p tag */
-#auth-section p {
-    margin-top: 5px;
-    margin-bottom: 5px; /* Reduce space around welcome message */
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.15);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.25);
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+/* ============================================
+   NOW PLAYING WIDGET
+   ============================================ */
+.now-playing-widget {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 24px;
+    margin: 20px auto;
+    max-width: 960px;
+    box-shadow: var(--shadow-md);
+    gap: 24px;
+    animation: fadeInUp 0.5s var(--transition-base);
+}
+
+.np-current {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    min-width: 0;
+}
+
+.np-cover {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+
+.np-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.np-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 2px;
+}
+
+.np-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.np-artist {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 6px;
+}
+
+.np-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.np-progress {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    border-radius: 2px;
+    transition: width 1s linear;
+    width: 0%;
+}
+
+.np-times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.np-device {
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.np-next {
+    min-width: 180px;
+    max-width: 260px;
+    padding-left: 20px;
+    border-left: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.np-label-small {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.np-next-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.np-next-artist {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 768px) {
+    .now-playing-widget {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .np-next {
+        width: 100%;
+        max-width: none;
+        padding-left: 0;
+        padding-top: 12px;
+        border-left: none;
+        border-top: 1px solid var(--border);
+    }
+
+    .np-cover {
+        width: 52px;
+        height: 52px;
+    }
 }

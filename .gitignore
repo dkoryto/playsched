@@ -12,3 +12,5 @@ __pycache__/
 *.srl
 *.xlsx
 *.csv
+*.log
+.spotify_token_cache.json

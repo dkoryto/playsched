@@ -26,13 +26,41 @@
                     <p>Please log in with Spotify to use the scheduler.</p>
                     <button id="login-button">Login with Spotify</button>
                 {% else %}
-                    <p>Welcome, {{ display_name }}! <button id="logout-button">Logout</button></p>
+                    <p>Welcome, {{ display_name }}! <button id="logout-button">Logout</button> <button id="theme-toggle" title="Toggle dark mode">🌙</button></p>
                 {% endif %}
             </div>
         </div>
+        {% if logged_in %}
+        <div class="header-clock">
+            <div id="live-clock">--</div>
+        </div>
+        {% endif %}
     </div>
 
     {% if logged_in %}
+    <div id="now-playing-widget" class="now-playing-widget" style="display: none;">
+        <div class="np-current">
+            <img id="np-cover" src="" alt="Cover" class="np-cover">
+            <div class="np-info">
+                <div class="np-label">Teraz gra</div>
+                <div id="np-title" class="np-title">--</div>
+                <div id="np-artist" class="np-artist">--</div>
+                <div class="np-progress-bar">
+                    <div id="np-progress" class="np-progress"></div>
+                </div>
+                <div class="np-times">
+                    <span id="np-time">0:00</span>
+                    <span id="np-device" class="np-device">--</span>
+                    <span id="np-duration">0:00</span>
+                </div>
+            </div>
+        </div>
+        <div class="np-next">
+            <div class="np-label-small">Następna</div>
+            <div id="np-next-title" class="np-next-title">--</div>
+            <div id="np-next-artist" class="np-next-artist">--</div>
+        </div>
+    </div>
     <div id="main-app">
         <div class="tab-container">
             <button class="tab-button active" data-tab="playlists-tab">My Playlists</button>
@@ -86,8 +114,10 @@
                     <input type="checkbox" id="day-fri" value="4"> Fri
                     <input type="checkbox" id="day-sat" value="5"> Sat
                     <input type="checkbox" id="day-sun" value="6"> Sun
-                    <button type="button" id="select-all-days">All</button>
-                    <button type="button" id="select-no-days">None (Play Once)</button>
+                    <span class="day-selector-actions">
+                        <button type="button" id="select-all-days">All</button>
+                        <button type="button" id="select-no-days">None (Play Once)</button>
+                    </span>
                 </div>
 
                 <div>
@@ -111,9 +141,11 @@
                     <label for="form-shuffle">Play in Shuffle Mode</label>
                 </div>
 
-                <button type="submit" id="save-schedule-button">Save Schedule</button>
-                <button type="button" id="cancel-schedule-button">Cancel</button>
-                <button type="button" id="play-now-form-button" style="margin-left: 20px;">Play Now</button>
+                <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="submit" id="save-schedule-button">Save Schedule</button>
+                    <button type="button" id="cancel-schedule-button" style="background: linear-gradient(135deg, #95a5a6, #7f8c8d);">Cancel</button>
+                    <button type="button" id="play-now-form-button">Play Now</button>
+                </div>
 
             </form>
         </div>

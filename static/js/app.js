@@ -45,18 +45,65 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initialization ---
     function init() {
         console.log("App initializing...");
+        initTheme();
+        initClock();
         // Check login status - handled by Flask template initially
         if (mainAppDiv) { // Only add listeners if logged in
             setupEventListeners();
             loadPlaylists(); // Load initial full list
             loadSchedules();
             loadDevices(); // Load devices for the form dropdown
+            initNowPlaying();
         } else if (loginButton) {
             // Add listener only if login button exists
             loginButton.addEventListener('click', () => {
                 window.location.href = '/login'; // Redirect to Flask login route
             });
         }
+    }
+
+    // --- Theme Toggle ---
+    function initTheme() {
+        const savedTheme = localStorage.getItem('playsched-theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+            document.body.classList.add('dark-mode');
+            updateThemeButton(true);
+        }
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', toggleTheme);
+        }
+    }
+
+    function toggleTheme() {
+        const isDark = document.body.classList.toggle('dark-mode');
+        localStorage.setItem('playsched-theme', isDark ? 'dark' : 'light');
+        updateThemeButton(isDark);
+    }
+
+    function updateThemeButton(isDark) {
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+            themeToggle.textContent = isDark ? '☀️' : '🌙';
+            themeToggle.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+        }
+    }
+
+    // --- Live Clock ---
+    function initClock() {
+        const clockEl = document.getElementById('live-clock');
+        if (!clockEl) return;
+
+        function updateClock() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+            const timeStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            clockEl.textContent = `${dateStr}  ${timeStr}`;
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
     }
 
     // --- Event Listeners Setup ---
@@ -203,10 +250,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderPlaylistSlice(playlistsSlice) {
         playlistListUl.innerHTML = ''; // Clear previous page's items
         if (!playlistsSlice || playlistsSlice.length === 0) {
-            const message = playlistSearchInput.value.trim() ?
-                 `<li>No playlists found matching "${playlistSearchInput.value}".</li>` :
-                 '<li>No playlists found.</li>';
-            playlistListUl.innerHTML = message;
+            playlistListUl.innerHTML = '';
+            const li = document.createElement('li');
+            li.textContent = playlistSearchInput.value.trim()
+                ? `No playlists found matching "${playlistSearchInput.value}".`
+                : 'No playlists found.';
+            playlistListUl.appendChild(li);
             return;
         }
         playlistsSlice.forEach(p => {
@@ -214,8 +263,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Basic escaping for display
             const safeName = p.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const safeUri = p.uri.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const safeAttrName = p.name.replace(/"/g, '&quot;').replace(/</g, "&lt;").replace(/>/g, "&gt;");
             // Store original name in data-name for the form
-            li.innerHTML = `${safeName} <button class="add-schedule-btn" data-uri="${safeUri}" data-name="${p.name}">Schedule</button>`;
+            li.innerHTML = `${safeName} <button class="add-schedule-btn" data-uri="${safeUri}" data-name="${safeAttrName}">Schedule</button>`;
             playlistListUl.appendChild(li);
         });
     }
@@ -266,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderSchedules(schedules) {
         scheduleListUl.innerHTML = ''; // Clear previous
        if (!schedules || schedules.length === 0) {
-           scheduleListUl.innerHTML = '<li>No schedules created yet.</li>';
+           scheduleListUl.innerHTML = '<li style="animation: fadeInUp 0.4s ease;">No schedules created yet.</li>';
            return;
        }
 
@@ -288,23 +338,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let nextRunStr = "N/A"; // Default
         const nextTimeUTC_ISO = s._next_play_time_utc_iso; // Get the value from backend data
 
-        // *** ADD LOGGING HERE ***
-        console.log(`Schedule ID ${s.id}: Raw _next_play_time_utc from backend: ${nextTimeUTC_ISO}`);
-
         if (nextTimeUTC_ISO) {
             try {
                 const nextDate = new Date(nextTimeUTC_ISO);
-
-                // *** ADD LOGGING HERE ***
-                console.log(`Schedule ID ${s.id}: Parsed JS Date object: ${nextDate.toString()}`);
-                console.log(`Schedule ID ${s.id}: JS Date ISOString: ${nextDate.toISOString()}`); // Log the UTC value JS holds
-
                 const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' };
                 nextRunStr = nextDate.toLocaleString(undefined, options);
-
-                // *** ADD LOGGING HERE ***
-                console.log(`Schedule ID ${s.id}: Formatted by toLocaleString: ${nextRunStr}`);
-
             } catch (e) {
                 console.error("Error parsing next run date:", nextTimeUTC_ISO, e);
                 nextRunStr = "Error parsing date";
@@ -318,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
            // Use spans for better control over inline elements and labels
-           const shuffleStr = s.shuffle_state ? "Yes" : "No";
+           const shuffleStr = s.shuffle_state ? "On" : "Off";
            li.innerHTML = `
                 <div class="schedule-header">
                     <strong>${safePlaylistName}</strong>
@@ -337,11 +375,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="schedule-info-label">Status:</span> <span class="schedule-status ${statusClassName}">${statusStr}</span>
                  </div>
                 <div class="schedule-actions">
-                    <button class="play-now-btn" data-id="${s.id}" title="Play this schedule's playlist/device now">▶ Play Now</button>
+                    <button class="play-now-btn" data-id="${s.id}" title="Play this schedule's playlist/device now">Play Now</button>
+                    <button class="stop-now-btn" data-id="${s.id}" title="Stop playback on this schedule's device">Stop Now</button>
                     <button class="toggle-active-btn" data-id="${s.id}" title="${toggleBtnText} this schedule">${toggleBtnText}</button>
-                    <button class="edit-schedule-btn" data-id="${s.id}" title="Edit this schedule">✏️ Edit</button>
-                    <button class="duplicate-schedule-btn" data-id="${s.id}" title="Duplicate this schedule">📄 Duplicate</button>
-                    <button class="delete-schedule-btn" data-id="${s.id}" title="Delete this schedule">🗑️ Delete</button>
+                    <button class="edit-schedule-btn" data-id="${s.id}" title="Edit this schedule">Edit</button>
+                    <button class="duplicate-schedule-btn" data-id="${s.id}" title="Duplicate this schedule">Duplicate</button>
+                    <button class="delete-schedule-btn" data-id="${s.id}" title="Delete this schedule">Delete</button>
                 </div>
            `;
            // Store full data for editing
@@ -387,6 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
      async function handleScheduleActionClick(event) {
          // Handles clicks within the schedule list (delegated)
          const button = event.target.closest('button');
+         console.log('Schedule action click:', button?.className, button?.textContent);
          if (!button) return;
 
          const scheduleId = button.getAttribute('data-id');
@@ -396,8 +436,14 @@ document.addEventListener('DOMContentLoaded', () => {
              console.log(`Playing schedule ${scheduleId} now...`);
              button.textContent = "Playing..."; button.disabled = true;
              const result = await fetchData(`/api/schedules/${scheduleId}/play_now`, { method: 'POST' });
-             if (result) { setTimeout(() => { alert(result.message || "Playback initiated."); button.textContent = "▶ Play Now"; button.disabled = false; }, 500); }
-             else { button.textContent = "▶ Play Now"; button.disabled = false; }
+             if (result) { setTimeout(() => { alert(result.message || "Playback initiated."); button.textContent = "Play Now"; button.disabled = false; }, 500); }
+             else { button.textContent = "Play Now"; button.disabled = false; }
+         } else if (button.classList.contains('stop-now-btn')) {
+             console.log(`Stopping schedule ${scheduleId} now...`);
+             button.textContent = "Stopping..."; button.disabled = true;
+             const result = await fetchData(`/api/schedules/${scheduleId}/stop_now`, { method: 'POST' });
+             if (result) { setTimeout(() => { alert(result.message || "Playback stopped."); button.textContent = "Stop Now"; button.disabled = false; }, 500); }
+             else { button.textContent = "Stop Now"; button.disabled = false; }
          } else if (button.classList.contains('toggle-active-btn')) {
               console.log(`Toggling schedule ${scheduleId}...`);
              const result = await fetchData(`/api/schedules/${scheduleId}/toggle`, { method: 'PUT' });
@@ -452,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleSaveSchedule(event) {
         // Handles submission of the add/edit schedule form
         event.preventDefault();
-        console.log("Saving schedule...");
+        console.log("Saving schedule... button clicked, form data:");
 
         const scheduleId = formScheduleId.value;
         const isEditing = !!scheduleId;
@@ -626,6 +672,99 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { return "Invalid Days"; }
     }
 
+
+    // --- Now Playing Widget ---
+    let nowPlayingInterval = null;
+    let lastProgressMs = 0;
+    let lastDurationMs = 0;
+    let lastFetchTime = 0;
+
+    function initNowPlaying() {
+        updateNowPlaying();
+        nowPlayingInterval = setInterval(updateNowPlaying, 5000);
+        // Also update progress bar every second for smoothness
+        setInterval(updateProgressBar, 1000);
+    }
+
+    async function updateNowPlaying() {
+        try {
+            const response = await fetch('/api/current_playback');
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 503) {
+                    hideNowPlaying();
+                }
+                return;
+            }
+            const data = await response.json();
+            if (!data.is_playing || !data.track) {
+                hideNowPlaying();
+                return;
+            }
+            showNowPlaying(data);
+        } catch (err) {
+            console.error('Now playing fetch error:', err);
+        }
+    }
+
+    function showNowPlaying(data) {
+        const widget = document.getElementById('now-playing-widget');
+        if (!widget) return;
+        widget.style.display = 'flex';
+
+        const cover = document.getElementById('np-cover');
+        const title = document.getElementById('np-title');
+        const artist = document.getElementById('np-artist');
+        const device = document.getElementById('np-device');
+        const timeEl = document.getElementById('np-time');
+        const durationEl = document.getElementById('np-duration');
+        const nextTitle = document.getElementById('np-next-title');
+        const nextArtist = document.getElementById('np-next-artist');
+
+        if (cover) cover.src = data.track.image || '';
+        if (title) title.textContent = data.track.name;
+        if (artist) artist.textContent = data.track.artists;
+        if (device) device.textContent = data.device_name || '';
+
+        lastProgressMs = data.track.progress_ms || 0;
+        lastDurationMs = data.track.duration_ms || 1;
+        lastFetchTime = Date.now();
+
+        if (timeEl) timeEl.textContent = formatMs(lastProgressMs);
+        if (durationEl) durationEl.textContent = formatMs(lastDurationMs);
+
+        updateProgressBar();
+
+        if (data.next_track) {
+            if (nextTitle) nextTitle.textContent = data.next_track.name;
+            if (nextArtist) nextArtist.textContent = data.next_track.artists;
+        } else {
+            if (nextTitle) nextTitle.textContent = '--';
+            if (nextArtist) nextArtist.textContent = '--';
+        }
+    }
+
+    function hideNowPlaying() {
+        const widget = document.getElementById('now-playing-widget');
+        if (widget) widget.style.display = 'none';
+    }
+
+    function updateProgressBar() {
+        if (!lastDurationMs || lastDurationMs <= 0) return;
+        const elapsed = Date.now() - lastFetchTime;
+        const currentProgress = Math.min(lastProgressMs + elapsed, lastDurationMs);
+        const pct = (currentProgress / lastDurationMs) * 100;
+        const bar = document.getElementById('np-progress');
+        const timeEl = document.getElementById('np-time');
+        if (bar) bar.style.width = pct + '%';
+        if (timeEl) timeEl.textContent = formatMs(currentProgress);
+    }
+
+    function formatMs(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return minutes + ':' + String(seconds).padStart(2, '0');
+    }
 
     // --- Start the App ---
     init();

@@ -3,13 +3,15 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-SCHEDULE_DB_FILE = os.getenv('SCHEDULE_DB_FILE', 'playsched.db')
+SCHEDULE_DB_FILE = os.getenv("SCHEDULE_DB_FILE", "playsched.db")
+
 
 def get_db_connection():
     """Establishes and returns a database connection."""
     conn = sqlite3.connect(SCHEDULE_DB_FILE)
-    conn.row_factory = sqlite3.Row # Return rows as dictionary-like objects
+    conn.row_factory = sqlite3.Row  # Return rows as dictionary-like objects
     return conn
+
 
 def create_tables():
     """Creates the schedules table if it doesn't exist (including shuffle_state)."""
@@ -17,7 +19,8 @@ def create_tables():
     cursor = conn.cursor()
     try:
         # shuffle_state column included in the initial table definition
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS schedules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_spotify_id TEXT NOT NULL,
@@ -35,7 +38,8 @@ def create_tables():
                 last_triggered_utc TEXT,
                 shuffle_state BOOLEAN DEFAULT 0 -- Added shuffle state (0=false, 1=true)
             )
-        ''')
+        """
+        )
         # Removed the ALTER TABLE block
         conn.commit()
         print("Database tables checked/created.")
@@ -45,23 +49,41 @@ def create_tables():
     finally:
         conn.close()
 
+
 # --- CRUD Functions for Schedules ---
+
 
 def add_schedule(data):
     # Add shuffle_state to INSERT
-    sql = '''INSERT INTO schedules(user_spotify_id, playlist_uri, playlist_name, target_device_id, target_device_name, days_of_week, start_time_local, stop_time_local, volume, is_active, timezone, play_once_triggered, last_triggered_utc, shuffle_state)
-             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''' # Added one placeholder
+    sql = (
+        "INSERT INTO schedules(user_spotify_id, playlist_uri, playlist_name, "
+        "target_device_id, target_device_name, days_of_week, start_time_local, "
+        "stop_time_local, volume, is_active, timezone, play_once_triggered, "
+        "last_triggered_utc, shuffle_state) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"  # Added one placeholder
+    )
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(sql, (
-            data['user_spotify_id'], data['playlist_uri'], data['playlist_name'],
-            data['target_device_id'], data['target_device_name'], data['days_of_week'],
-            data['start_time_local'], data.get('stop_time_local'), data.get('volume'),
-            data.get('is_active', 1), data['timezone'],
-            data.get('play_once_triggered', 0), None,
-            data.get('shuffle_state', 0) # Get shuffle state, default 0
-        ))
+        cursor.execute(
+            sql,
+            (
+                data["user_spotify_id"],
+                data["playlist_uri"],
+                data["playlist_name"],
+                data["target_device_id"],
+                data["target_device_name"],
+                data["days_of_week"],
+                data["start_time_local"],
+                data.get("stop_time_local"),
+                data.get("volume"),
+                data.get("is_active", 1),
+                data["timezone"],
+                data.get("play_once_triggered", 0),
+                None,
+                data.get("shuffle_state", 0),  # Get shuffle state, default 0
+            ),
+        )
         conn.commit()
         return cursor.lastrowid
     except sqlite3.Error as e:
@@ -69,6 +91,7 @@ def add_schedule(data):
         return None
     finally:
         conn.close()
+
 
 def get_all_schedules(user_spotify_id):
     """Retrieves all schedules for a given user."""
@@ -84,6 +107,7 @@ def get_all_schedules(user_spotify_id):
     finally:
         conn.close()
 
+
 def get_schedule_by_id(schedule_id, user_spotify_id):
     """Retrieves a specific schedule by ID for a user."""
     conn = get_db_connection()
@@ -98,22 +122,35 @@ def get_schedule_by_id(schedule_id, user_spotify_id):
     finally:
         conn.close()
 
+
 def update_schedule(schedule_id, user_spotify_id, data):
     fields = []
     values = []
     # Add shuffle_state to allowed fields
-    allowed_fields = ['playlist_uri', 'playlist_name', 'target_device_id', 'target_device_name', 'days_of_week', 'start_time_local', 'stop_time_local', 'volume', 'is_active', 'timezone', 'shuffle_state']
+    allowed_fields = [
+        "playlist_uri",
+        "playlist_name",
+        "target_device_id",
+        "target_device_name",
+        "days_of_week",
+        "start_time_local",
+        "stop_time_local",
+        "volume",
+        "is_active",
+        "timezone",
+        "shuffle_state",
+    ]
     for field in allowed_fields:
         if field in data:
             fields.append(f"{field} = ?")
             # Convert boolean for shuffle_state if necessary
             value = data[field]
-            if field == 'shuffle_state':
-                 value = 1 if value else 0 # Ensure it's stored as 0 or 1
+            if field == "shuffle_state":
+                value = 1 if value else 0  # Ensure it's stored as 0 or 1
             values.append(value)
 
     if not fields:
-        return False # Nothing to update
+        return False  # Nothing to update
 
     sql = f"UPDATE schedules SET {', '.join(fields)} WHERE id = ? AND user_spotify_id = ?"
     values.extend([schedule_id, user_spotify_id])
@@ -123,7 +160,7 @@ def update_schedule(schedule_id, user_spotify_id, data):
         cursor = conn.cursor()
         cursor.execute(sql, tuple(values))
         conn.commit()
-        return cursor.rowcount > 0 # Return True if update happened
+        return cursor.rowcount > 0  # Return True if update happened
     except sqlite3.Error as e:
         print(f"Database error updating schedule {schedule_id}: {e}")
         return False
@@ -139,12 +176,13 @@ def delete_schedule(schedule_id, user_spotify_id):
         cursor = conn.cursor()
         cursor.execute(sql, (schedule_id, user_spotify_id))
         conn.commit()
-        return cursor.rowcount > 0 # Return True if deletion happened
+        return cursor.rowcount > 0  # Return True if deletion happened
     except sqlite3.Error as e:
         print(f"Database error deleting schedule {schedule_id}: {e}")
         return False
     finally:
         conn.close()
+
 
 def toggle_schedule_active(schedule_id, user_spotify_id):
     """Toggles the is_active status of a schedule."""
@@ -153,7 +191,7 @@ def toggle_schedule_active(schedule_id, user_spotify_id):
     if not current_schedule:
         return False
 
-    new_status = 1 - current_schedule['is_active'] # Toggle 0 to 1 or 1 to 0
+    new_status = 1 - current_schedule["is_active"]  # Toggle 0 to 1 or 1 to 0
     sql = "UPDATE schedules SET is_active = ? WHERE id = ? AND user_spotify_id = ?"
     conn = get_db_connection()
     try:
@@ -167,12 +205,18 @@ def toggle_schedule_active(schedule_id, user_spotify_id):
     finally:
         conn.close()
 
+
 def get_active_schedules_for_scheduler():
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         # Add shuffle_state to SELECT list
-        cursor.execute("SELECT id, user_spotify_id, playlist_uri, target_device_id, days_of_week, start_time_local, stop_time_local, volume, timezone, play_once_triggered, last_triggered_utc, shuffle_state FROM schedules WHERE is_active = 1")
+        cursor.execute(
+            "SELECT id, user_spotify_id, playlist_uri, target_device_id, "
+            "days_of_week, start_time_local, stop_time_local, volume, timezone, "
+            "play_once_triggered, last_triggered_utc, shuffle_state "
+            "FROM schedules WHERE is_active = 1"
+        )
         schedules = [dict(row) for row in cursor.fetchall()]
         return schedules
     except sqlite3.Error as e:
@@ -181,20 +225,27 @@ def get_active_schedules_for_scheduler():
     finally:
         conn.close()
 
+
 def update_schedule_trigger_info(schedule_id, trigger_time_utc_iso, played_once=False):
     """Updates trigger info after a schedule runs."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         if played_once:
-            cursor.execute("UPDATE schedules SET last_triggered_utc = ?, play_once_triggered = 1 WHERE id = ?", (trigger_time_utc_iso, schedule_id))
+            cursor.execute(
+                "UPDATE schedules SET last_triggered_utc = ?, play_once_triggered = 1 WHERE id = ?",
+                (trigger_time_utc_iso, schedule_id),
+            )
         else:
-            cursor.execute("UPDATE schedules SET last_triggered_utc = ? WHERE id = ?", (trigger_time_utc_iso, schedule_id))
+            cursor.execute(
+                "UPDATE schedules SET last_triggered_utc = ? WHERE id = ?", (trigger_time_utc_iso, schedule_id)
+            )
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database error updating trigger info for schedule {schedule_id}: {e}")
     finally:
         conn.close()
+
 
 # Ensure tables exist when module is loaded
 create_tables()

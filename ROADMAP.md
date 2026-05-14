@@ -2,6 +2,16 @@
 
 A few ideas for future version - feel free to suggest things yourself! This is starting out as scratching an itch, but eventually it will hopefully start expanding out to a richer audio media thingy.
 
+## Completed
+
+* ✅ **Modern UI/UX Redesign** (v0.2.0) - Card-based layouts, glassmorphism, animations, responsive grid, custom scrollbars
+* ✅ **Dark Mode** (v0.2.0) - Full dark/light theme toggle with system preference detection and `localStorage` persistence
+* ✅ **Live Clock** (v0.2.0) - Real-time date/time display in header with ticking seconds
+* ✅ **Immediate Stop Playback** (v0.2.0) - "Stop Now" button for instant pause of active playback
+* ✅ **Now Playing Widget** (v0.2.0) - Dynamic display of current track (title, artist, cover, progress bar, device) and next track in queue
+* ✅ **Responsive Design** (v0.2.0) - Mobile-first layout that works on phones, tablets, and desktops
+* ✅ **Project Auto-Setup** (v0.2.0) - `.env` generation, SSL certificate creation, dependency installation
+
 ## Spotify Related
 
 * Create zsh script and crontab file to use with crontab to (every 2 hours) update spotify played tracks, and (every day) update playlists with changes
