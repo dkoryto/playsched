@@ -1,5 +1,10 @@
 // static/js/app.js
 
+function t(key, fallback) {
+    const dict = window.I18N || {};
+    return dict[key] !== undefined ? dict[key] : (fallback !== undefined ? fallback : key);
+}
+
 function showToast(message, type = 'success', duration = 3000) {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -16,12 +21,12 @@ function showToast(message, type = 'success', duration = 3000) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- Global Variables ---
-    let allPlaylists = []; // Stores the complete list fetched from backend
-    let filteredPlaylists = []; // Stores the currently filtered list (based on search)
-    let currentDisplayPage = 1; // Current page number being displayed (frontend pagination)
-    const PLAYLIST_DISPLAY_LIMIT = 25; // How many items to show per page in the frontend
-    let searchTimeout = null; // For debouncing search input
-    let currentDevices = []; // Store fetched devices globally for the form
+    let allPlaylists = [];
+    let filteredPlaylists = [];
+    let currentDisplayPage = 1;
+    const PLAYLIST_DISPLAY_LIMIT = 25;
+    let searchTimeout = null;
+    let currentDevices = [];
 
     // --- DOM Elements ---
     const loginButton = document.getElementById('login-button');
@@ -31,6 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const scheduleListUl = document.getElementById('schedule-list');
     const refreshPlaylistsBtn = document.getElementById('refresh-playlists');
     const refreshSchedulesBtn = document.getElementById('refresh-schedules');
+    const exportSchedulesBtn = document.getElementById('export-schedules-button');
+    const importSchedulesBtn = document.getElementById('import-schedules-button');
+    const importSchedulesFile = document.getElementById('import-schedules-file');
     const scheduleFormContainer = document.getElementById('schedule-form-container');
     const scheduleForm = document.getElementById('schedule-form');
     const formTitle = document.getElementById('form-title');
@@ -46,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const formScheduleId = document.getElementById('schedule-id');
     const cancelScheduleButton = document.getElementById('cancel-schedule-button');
     const playNowFormButton = document.getElementById('play-now-form-button');
+    const testDeviceButton = document.getElementById('test-device-button');
     const selectAllDaysBtn = document.getElementById('select-all-days');
     const selectNoDaysBtn = document.getElementById('select-no-days');
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -56,23 +65,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistNextBtn = document.getElementById('playlist-next');
     const playlistPageInfo = document.getElementById('playlist-page-info');
 
+    // Now Playing controls
+    const npBtnPrev = document.getElementById('np-btn-prev');
+    const npBtnPlay = document.getElementById('np-btn-play');
+    const npBtnPause = document.getElementById('np-btn-pause');
+    const npBtnStop = document.getElementById('np-btn-stop');
+    const npBtnNext = document.getElementById('np-btn-next');
+    const npBtnMute = document.getElementById('np-btn-mute');
+
     // --- Initialization ---
     function init() {
         console.log("App initializing...");
         initTheme();
+        initLang();
         initClock();
-        // Check login status - handled by Flask template initially
-        if (mainAppDiv) { // Only add listeners if logged in
+        if (mainAppDiv) {
             setupEventListeners();
-            loadPlaylists(); // Load initial full list
+            loadPlaylists();
             loadSchedules();
-            loadDevices(); // Load devices for the form dropdown
+            loadDevices();
             initNowPlaying();
         } else if (loginButton) {
-            // Add listener only if login button exists
             loginButton.addEventListener('click', () => {
-                window.location.href = '/login'; // Redirect to Flask login route
+                window.location.href = '/login';
             });
+        }
+    }
+
+    // --- Language Toggle ---
+    function initLang() {
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchLanguage(btn.dataset.lang));
+        });
+    }
+
+    async function switchLanguage(newLang) {
+        if (!newLang || newLang === window.LANG) return;
+        try {
+            const response = await fetch('/api/set_language', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lang: newLang }),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                console.error('Failed to set language');
+            }
+        } catch (e) {
+            console.error('Error setting language:', e);
         }
     }
 
@@ -123,12 +164,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Event Listeners Setup ---
     function setupEventListeners() {
         if (logoutButton) logoutButton.addEventListener('click', () => window.location.href = '/logout');
-        if (refreshPlaylistsBtn) refreshPlaylistsBtn.addEventListener('click', loadPlaylists); // Refresh reloads all
+        const panelLogoutBtn = document.getElementById('panel-logout-button');
+        if (panelLogoutBtn) panelLogoutBtn.addEventListener('click', async () => {
+            try {
+                await fetch('/api/panel_logout', {method: 'POST'});
+            } catch (e) {}
+            window.location.reload();
+        });
+        if (refreshPlaylistsBtn) refreshPlaylistsBtn.addEventListener('click', loadPlaylists);
         if (refreshSchedulesBtn) refreshSchedulesBtn.addEventListener('click', loadSchedules);
-        if (playlistSearchInput) playlistSearchInput.addEventListener('input', handlePlaylistFilterInput); // Use specific handler
+        if (exportSchedulesBtn) exportSchedulesBtn.addEventListener('click', handleExportSchedules);
+        if (importSchedulesBtn) importSchedulesBtn.addEventListener('click', () => importSchedulesFile?.click());
+        if (importSchedulesFile) importSchedulesFile.addEventListener('change', handleImportSchedules);
+        if (playlistSearchInput) playlistSearchInput.addEventListener('input', handlePlaylistFilterInput);
         if (scheduleForm) scheduleForm.addEventListener('submit', handleSaveSchedule);
         if (cancelScheduleButton) cancelScheduleButton.addEventListener('click', hideScheduleForm);
         if (playNowFormButton) playNowFormButton.addEventListener('click', handlePlayNowFromForm);
+        if (testDeviceButton) testDeviceButton.addEventListener('click', handleTestDevice);
         if (selectAllDaysBtn) selectAllDaysBtn.addEventListener('click', () => toggleAllDays(true));
         if (selectNoDaysBtn) selectNoDaysBtn.addEventListener('click', () => toggleAllDays(false));
 
@@ -150,42 +202,46 @@ document.addEventListener('DOMContentLoaded', () => {
         // Pagination buttons
         if (playlistPrevBtn) playlistPrevBtn.addEventListener('click', () => changeDisplayPage(-1));
         if (playlistNextBtn) playlistNextBtn.addEventListener('click', () => changeDisplayPage(1));
+
+        // Now Playing controls
+        if (npBtnPrev) npBtnPrev.addEventListener('click', () => handleNpControl('previous'));
+        if (npBtnPlay) npBtnPlay.addEventListener('click', () => handleNpControl('play'));
+        if (npBtnPause) npBtnPause.addEventListener('click', () => handleNpControl('pause'));
+        if (npBtnStop) npBtnStop.addEventListener('click', () => handleNpControl('pause'));
+        if (npBtnNext) npBtnNext.addEventListener('click', () => handleNpControl('next'));
+        if (npBtnMute) npBtnMute.addEventListener('click', handleNpMuteToggle);
     }
 
     // --- API Call Functions ---
     async function fetchData(url, options = {}) {
-        // Default headers if none provided
         if (!options.headers) {
              options.headers = {};
         }
-        // Add content type for POST/PUT if body is JSON (common case)
         if (options.body && typeof options.body === 'string' && !options.headers['Content-Type']) {
              options.headers['Content-Type'] = 'application/json';
         }
 
         try {
             const response = await fetch(url, options);
-            // Check for 401 Unauthorized first
             if (response.status === 401) {
                 console.error("API Error 401: Unauthorized. Session likely expired.");
-                alert("Your session may have expired. Please log in again.");
-                window.location.href = '/logout'; // Force re-login
-                return null; // Stop processing
+                alert(t('error_session_expired'));
+                window.location.href = '/logout';
+                return null;
             }
-            // Check for other errors
             if (!response.ok) {
                 let errorData = { error: `HTTP error ${response.status}` };
                 try { errorData = await response.json(); } catch (e) { errorData.error = errorData.error + `: ${response.statusText}`; }
                 console.error(`API Error (${url}): ${response.status}`, errorData);
                 alert(`Error: ${errorData.error || `Failed to fetch data from ${url}`}`);
-                return null; // Indicate failure
+                return null;
             }
-            if (response.status === 204) { return { success: true }; } // Handle No Content
-            return await response.json(); // Parse JSON
+            if (response.status === 204) { return { success: true }; }
+            return await response.json();
         } catch (error) {
             console.error(`Network/Fetch Error (${url}):`, error);
-            alert(`A network error occurred. Please check your connection or try again later. See console for details.`);
-            return null; // Indicate failure
+            alert(t('error_network'));
+            return null;
         }
     }
 
@@ -193,36 +249,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Data Loading Functions ---
     async function loadPlaylists() {
         console.log("Loading ALL playlists from backend...");
-        playlistListUl.innerHTML = '<li>Loading playlists...</li>';
+        playlistListUl.innerHTML = `<li>${t('loading_playlists')}</li>`;
         playlistPaginationDiv.style.display = 'none';
-        playlistSearchInput.value = ''; // Clear search on full reload
+        playlistSearchInput.value = '';
 
-        const url = `/api/playlists`; // Fetches the full list now
+        const url = `/api/playlists`;
         const data = await fetchData(url);
 
         if (data) {
-            allPlaylists = data; // Store the full list
+            allPlaylists = data;
             console.log(`Loaded ${allPlaylists.length} playlists total.`);
-            filterAndDisplayPlaylists(); // Call master function to filter (with empty term) and display page 1
+            filterAndDisplayPlaylists();
         } else {
             allPlaylists = [];
             filteredPlaylists = [];
-            playlistListUl.innerHTML = '<li>Failed to load playlists.</li>';
-            renderPaginationControls(); // Update controls (will show none)
+            playlistListUl.innerHTML = `<li>${t('failed_to_load', 'Failed to load playlists.')}</li>`;
+            renderPaginationControls();
         }
     }
 
     async function loadDevices() {
         console.log("Loading devices...");
         const devices = await fetchData('/api/devices');
-        currentDevices = devices || []; // Store globally
-        // Render into the form select now, so it's ready when form opens
+        currentDevices = devices || [];
         renderDeviceOptions(currentDevices);
     }
 
      async function loadSchedules() {
         console.log("Loading schedules...");
-        scheduleListUl.innerHTML = '<li>Loading schedules...</li>';
+        scheduleListUl.innerHTML = `<li>${t('loading_schedules')}</li>`;
         const schedules = await fetchData('/api/schedules');
         renderSchedules(schedules || []);
     }
@@ -232,54 +287,44 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterAndDisplayPlaylists() {
         const searchTerm = playlistSearchInput.value.toLowerCase().trim();
 
-        // Filter the master list
         if (searchTerm) {
             filteredPlaylists = allPlaylists.filter(playlist =>
                 playlist.name.toLowerCase().includes(searchTerm)
             );
         } else {
-            // If no search term, the filtered list is the full list
-            filteredPlaylists = [...allPlaylists]; // Use spread to copy
+            filteredPlaylists = [...allPlaylists];
         }
 
-        // Reset to page 1 whenever the filter changes
-        // Note: This is handled in the input handler which calls this function
-
-        // Display the first page of the filtered results
         renderPaginatedView();
     }
 
     function renderPaginatedView() {
-        // Calculate the slice of the *filtered* list to display
         const startIndex = (currentDisplayPage - 1) * PLAYLIST_DISPLAY_LIMIT;
         const endIndex = startIndex + PLAYLIST_DISPLAY_LIMIT;
         const playlistsToShow = filteredPlaylists.slice(startIndex, endIndex);
 
-        // Render just the slice
         renderPlaylistSlice(playlistsToShow);
-        // Update pagination controls based on the *filtered* list length
         renderPaginationControls();
     }
 
     function renderPlaylistSlice(playlistsSlice) {
-        playlistListUl.innerHTML = ''; // Clear previous page's items
+        playlistListUl.innerHTML = '';
         if (!playlistsSlice || playlistsSlice.length === 0) {
             playlistListUl.innerHTML = '';
             const li = document.createElement('li');
-            li.textContent = playlistSearchInput.value.trim()
-                ? `No playlists found matching "${playlistSearchInput.value}".`
-                : 'No playlists found.';
+            const searchTerm = playlistSearchInput.value.trim();
+            li.textContent = searchTerm
+                ? t('no_playlists_matching', 'No playlists found matching "{term}".').replace('{term}', searchTerm)
+                : t('no_playlists', 'No playlists found.');
             playlistListUl.appendChild(li);
             return;
         }
         playlistsSlice.forEach(p => {
             const li = document.createElement('li');
-            // Basic escaping for display
             const safeName = p.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const safeUri = p.uri.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const safeAttrName = p.name.replace(/"/g, '&quot;').replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            // Store original name in data-name for the form
-            li.innerHTML = `${safeName} <button class="add-schedule-btn" data-uri="${safeUri}" data-name="${safeAttrName}">Schedule</button>`;
+            li.innerHTML = `${safeName} <button class="add-schedule-btn" data-uri="${safeUri}" data-name="${safeAttrName}">${t('schedule', 'Schedule')}</button>`;
             playlistListUl.appendChild(li);
         });
     }
@@ -291,32 +336,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalPages = Math.ceil(totalFilteredItems / PLAYLIST_DISPLAY_LIMIT);
 
         if (totalPages <= 1) {
-            playlistPaginationDiv.style.display = 'none'; // Hide if only one page or empty
+            playlistPaginationDiv.style.display = 'none';
             return;
         }
 
         playlistPaginationDiv.style.display = 'flex';
-        playlistPageInfo.textContent = `Page ${currentDisplayPage} of ${totalPages} (${totalFilteredItems} items)`;
+        playlistPageInfo.textContent = `${t('loading')} Page ${currentDisplayPage} of ${totalPages} (${totalFilteredItems} ${t('loading')})`;
+        // Keep simple English page info since it's mostly numeric
+        playlistPageInfo.textContent = `Page ${currentDisplayPage} of ${totalPages} (${totalFilteredItems})`;
         playlistPrevBtn.disabled = (currentDisplayPage <= 1);
         playlistNextBtn.disabled = (currentDisplayPage >= totalPages);
 
-        // Store total pages for boundary checks in changeDisplayPage (optional but good)
         playlistPaginationDiv.dataset.totalPages = totalPages;
     }
 
     function renderDeviceOptions(devices) {
-        // Keep track of current selection only if form is open? Or just always render?
-        // Let's always render, assuming form might open later.
-        // const currentSelection = formDeviceSelect.value; // Preserve selection if possible? Might be complex if list changes.
-        formDeviceSelect.innerHTML = '<option value="">-- Select Device --</option>';
+        formDeviceSelect.innerHTML = `<option value="">${t('select_device', '-- Select Device --')}</option>`;
         if (!devices || devices.length === 0) {
-            formDeviceSelect.innerHTML += '<option value="" disabled>No active devices found</option>';
+            formDeviceSelect.innerHTML += `<option value="" disabled>${t('no_active_devices', 'No active devices found')}</option>`;
             return;
         }
         devices.forEach(d => {
             const option = document.createElement('option');
             option.value = d.id;
-            // Basic escaping for device name
             option.textContent = `${d.name.replace(/</g, "&lt;").replace(/>/g, "&gt;")} (${d.type})`;
             if (d.is_active) {
                  option.textContent += " ★ Active";
@@ -324,80 +366,73 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             formDeviceSelect.appendChild(option);
         });
-        // Restore selection might be better done when opening the form for editing
     }
 
     function renderSchedules(schedules) {
-        scheduleListUl.innerHTML = ''; // Clear previous
+        scheduleListUl.innerHTML = '';
        if (!schedules || schedules.length === 0) {
-           scheduleListUl.innerHTML = '<li style="animation: fadeInUp 0.4s ease;">No schedules created yet.</li>';
+           scheduleListUl.innerHTML = `<li style="animation: fadeInUp 0.4s ease;">${t('no_schedules')}</li>`;
            return;
        }
 
-       // Note: Schedules are now pre-sorted by the backend
        schedules.forEach(s => {
-        
            const li = document.createElement('li');
-           const daysStr = s.days_of_week ? getDaysString(s.days_of_week) : (s.play_once_triggered ? "Played Once" : "Play Once");
+           const daysStr = s.days_of_week ? getDaysString(s.days_of_week) : (s.play_once_triggered ? t('played_once') : t('play_once'));
            const stopStr = s.stop_time_local ? ` - ${s.stop_time_local}` : "";
-           const volumeStr = s.volume !== null ? ` | Vol: ${s.volume}%` : "";
-           const statusStr = s.is_active ? "Active" : "Paused";
-           const toggleBtnText = s.is_active ? "Pause" : "Unpause";
-           // Use specific CSS classes for status (see CSS changes below)
+           const volumeStr = s.volume !== null ? ` | ${t('vol')}: ${s.volume}%` : "";
+           const statusStr = s.is_active ? t('active') : t('paused');
+           const toggleBtnText = s.is_active ? t('toggle_pause', 'Pause') : t('toggle_unpause', 'Unpause');
            const statusClassName = s.is_active ? "status-active" : "status-paused";
            const safePlaylistName = (s.playlist_name || 'Unknown Playlist').replace(/</g, "&lt;").replace(/>/g, "&gt;");
            const safeDeviceName = (s.target_device_name || s.target_device_id || 'Unknown Device').replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-           // --- Calculate and Format Next Run Time ---
-        let nextRunStr = "N/A"; // Default
-        const nextTimeUTC_ISO = s._next_play_time_utc_iso; // Get the value from backend data
+           let nextRunStr = "N/A";
+           const nextTimeUTC_ISO = s._next_play_time_utc_iso;
 
-        if (nextTimeUTC_ISO) {
-            try {
-                const nextDate = new Date(nextTimeUTC_ISO);
-                const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' };
-                nextRunStr = nextDate.toLocaleString(undefined, options);
-            } catch (e) {
-                console.error("Error parsing next run date:", nextTimeUTC_ISO, e);
-                nextRunStr = "Error parsing date";
-            }
-        } else if (!s.is_active) {
-            nextRunStr = "Paused";
-        } else if (s.play_once_triggered) {
-             nextRunStr = "Already Played";
-        }
-           // --- End Next Run Time Calculation ---
+           if (nextTimeUTC_ISO) {
+               try {
+                   const nextDate = new Date(nextTimeUTC_ISO);
+                   const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' };
+                   nextRunStr = nextDate.toLocaleString(undefined, options);
+               } catch (e) {
+                   console.error("Error parsing next run date:", nextTimeUTC_ISO, e);
+                   nextRunStr = "Error parsing date";
+               }
+           } else if (!s.is_active) {
+               nextRunStr = t('paused');
+           } else if (s.play_once_triggered) {
+                nextRunStr = t('played_once');
+           }
 
-
-           // Use spans for better control over inline elements and labels
-           const shuffleStr = s.shuffle_state ? "On" : "Off";
+           const shuffleStr = s.shuffle_state ? t('on') : t('off');
            li.innerHTML = `
                 <div class="schedule-header">
                     <strong>${safePlaylistName}</strong>
-                    <span class="schedule-device">on ${safeDeviceName}</span>
+                    <span class="schedule-device">${t('device')} ${safeDeviceName}</span>
                 </div>
                 <div class="schedule-details">
-                    <span>Time: ${s.start_time_local}${stopStr} (${s.timezone || '?'})</span>
-                    <span>Days: ${daysStr}</span>
-                    ${volumeStr ? `<span>Vol: ${s.volume}%</span>` : ''}
-                    <span>Shuffle: ${shuffleStr}</span>
+                    <span>${t('time')}: ${s.start_time_local}${stopStr} (${s.timezone || '?'})</span>
+                    <span>${t('days')}: ${daysStr}</span>
+                    ${volumeStr ? `<span>${t('vol')}: ${s.volume}%</span>` : ''}
+                    <span>${t('shuffle_short')}: ${shuffleStr}</span>
                 </div>
                 <div class="schedule-status-line">
-                    <span class="schedule-info-label">Next Run:</span> <span class="schedule-next-run">${nextRunStr}</span>
+                    <span class="schedule-info-label">${t('next_run')}:</span> <span class="schedule-next-run">${nextRunStr}</span>
                 </div>
                  <div class="schedule-status-line">
-                    <span class="schedule-info-label">Status:</span> <span class="schedule-status ${statusClassName}">${statusStr}</span>
+                    <span class="schedule-info-label">${t('status')}:</span> <span class="schedule-status ${statusClassName}">${statusStr}</span>
                  </div>
                 <div class="schedule-actions">
-                    <button class="play-now-btn" data-id="${s.id}" title="Play this schedule's playlist/device now">Play Now</button>
-                    <button class="stop-now-btn" data-id="${s.id}" title="Stop playback on this schedule's device">Stop Now</button>
-                    <button class="toggle-active-btn" data-id="${s.id}" title="${toggleBtnText} this schedule">${toggleBtnText}</button>
-                    <button class="edit-schedule-btn" data-id="${s.id}" title="Edit this schedule">Edit</button>
-                    <button class="duplicate-schedule-btn" data-id="${s.id}" title="Duplicate this schedule">Duplicate</button>
-                    <button class="delete-schedule-btn" data-id="${s.id}" title="Delete this schedule">Delete</button>
+                    <button class="move-up-btn" data-id="${s.id}" title="Move up">⬆️</button>
+                    <button class="move-down-btn" data-id="${s.id}" title="Move down">⬇️</button>
+                    <button class="play-now-btn" data-id="${s.id}" title="${t('play_now')}">${t('play_now')}</button>
+                    <button class="stop-now-btn" data-id="${s.id}" title="${t('stop')}">${t('stop')}</button>
+                    <button class="toggle-active-btn" data-id="${s.id}" title="${toggleBtnText}">${toggleBtnText}</button>
+                    <button class="edit-schedule-btn" data-id="${s.id}" title="${t('edit')}">${t('edit')}</button>
+                    <button class="duplicate-schedule-btn" data-id="${s.id}" title="${t('duplicate')}">${t('duplicate')}</button>
+                    <button class="delete-schedule-btn" data-id="${s.id}" title="${t('delete')}">${t('delete')}</button>
                 </div>
            `;
-           // Store full data for editing
            li.dataset.scheduleData = JSON.stringify(s);
            scheduleListUl.appendChild(li);
        });
@@ -411,34 +446,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
          if (nextPage >= 1 && nextPage <= totalPages) {
              currentDisplayPage = nextPage;
-             renderPaginatedView(); // Re-render with the new page slice
+             renderPaginatedView();
          } else {
              console.log("Boundary hit, page not changed.");
          }
     }
 
     function handlePlaylistFilterInput() {
-         // Debounce the filtering
          clearTimeout(searchTimeout);
          searchTimeout = setTimeout(() => {
-             currentDisplayPage = 1; // Reset to page 1 on new filter
-             filterAndDisplayPlaylists(); // Filter and display page 1 of results
-         }, 300); // 300ms delay
+             currentDisplayPage = 1;
+             filterAndDisplayPlaylists();
+         }, 300);
     }
 
     function handlePlaylistClick(event) {
-        // Handles clicks within the playlist list (delegated)
         if (event.target.classList.contains('add-schedule-btn')) {
             const button = event.target;
-            // Retrieve original name from data attribute
             const uri = button.getAttribute('data-uri');
-            const name = button.getAttribute('data-name'); // Use original name here
-            openScheduleForm({ playlist_uri: uri, playlist_name: name }); // Open form for adding
+            const name = button.getAttribute('data-name');
+            openScheduleForm({ playlist_uri: uri, playlist_name: name });
         }
     }
 
      async function handleScheduleActionClick(event) {
-         // Handles clicks within the schedule list (delegated)
          const button = event.target.closest('button');
          console.log('Schedule action click:', button?.className, button?.textContent);
          if (!button) return;
@@ -446,18 +477,22 @@ document.addEventListener('DOMContentLoaded', () => {
          const scheduleId = button.getAttribute('data-id');
          if (!scheduleId) return;
 
-         if (button.classList.contains('play-now-btn')) {
+         if (button.classList.contains('move-up-btn') || button.classList.contains('move-down-btn')) {
+             const direction = button.classList.contains('move-up-btn') ? 'up' : 'down';
+             const result = await fetchData(`/api/schedules/${scheduleId}/move`, { method: 'PUT', body: JSON.stringify({direction}) });
+             if (result) loadSchedules();
+         } else if (button.classList.contains('play-now-btn')) {
              console.log(`Playing schedule ${scheduleId} now...`);
-             button.textContent = "Playing..."; button.disabled = true;
+             button.textContent = t('playing', 'Playing...'); button.disabled = true;
              const result = await fetchData(`/api/schedules/${scheduleId}/play_now`, { method: 'POST' });
-             if (result) { setTimeout(() => { showToast(result.message || "Playback initiated", "success"); button.textContent = "Play Now"; button.disabled = false; }, 500); }
-             else { button.textContent = "Play Now"; button.disabled = false; }
+             if (result) { setTimeout(() => { showToast(result.message || t('toast_playback_initiated'), "success"); button.textContent = t('play_now'); button.disabled = false; }, 500); }
+             else { button.textContent = t('play_now'); button.disabled = false; }
          } else if (button.classList.contains('stop-now-btn')) {
              console.log(`Stopping schedule ${scheduleId} now...`);
-             button.textContent = "Stopping..."; button.disabled = true;
+             button.textContent = t('stopping', 'Stopping...'); button.disabled = true;
              const result = await fetchData(`/api/schedules/${scheduleId}/stop_now`, { method: 'POST' });
-             if (result) { setTimeout(() => { showToast(result.message || "Playback stopped", "info"); button.textContent = "Stop Now"; button.disabled = false; }, 500); }
-             else { button.textContent = "Stop Now"; button.disabled = false; }
+             if (result) { setTimeout(() => { showToast(result.message || t('toast_playback_stopped'), "info"); button.textContent = t('stop'); button.disabled = false; }, 500); }
+             else { button.textContent = t('stop'); button.disabled = false; }
          } else if (button.classList.contains('toggle-active-btn')) {
               console.log(`Toggling schedule ${scheduleId}...`);
              const result = await fetchData(`/api/schedules/${scheduleId}/toggle`, { method: 'PUT' });
@@ -467,28 +502,18 @@ document.addEventListener('DOMContentLoaded', () => {
              const scheduleData = JSON.parse(button.closest('li').dataset.scheduleData || '{}');
              openScheduleForm(scheduleData);
             } else if (button.classList.contains('duplicate-schedule-btn')) {
-                // --- ADD THIS BLOCK ---
                 console.log(`Duplicating schedule ${scheduleId}...`);
                 const listItem = button.closest('li');
                 if (listItem && listItem.dataset.scheduleData) {
                     try {
                         const scheduleData = JSON.parse(listItem.dataset.scheduleData);
-    
-                        // Prepare data for a NEW schedule based on the old one
-                        const duplicatedData = { ...scheduleData }; // Create a copy
-    
-                        // Remove fields specific to the original instance
+                        const duplicatedData = { ...scheduleData };
                         delete duplicatedData.id;
                         delete duplicatedData.last_triggered_utc;
                         delete duplicatedData.play_once_triggered;
-                        // Remove calculated fields added by backend/frontend
                         delete duplicatedData._next_play_time_utc_iso;
-                        delete duplicatedData._sort_obj; // If this key exists
-    
-                        // Open the form, pre-filled with the copied data (without ID)
-                        // openScheduleForm handles 'Add Schedule' title when no ID is present
+                        delete duplicatedData._sort_obj;
                         openScheduleForm(duplicatedData);
-    
                     } catch (e) {
                         console.error("Error parsing schedule data for duplication:", e);
                         alert("Error: Could not read schedule data for duplication.");
@@ -497,10 +522,8 @@ document.addEventListener('DOMContentLoaded', () => {
                      console.error(`Could not find schedule data for ID ${scheduleId} to duplicate.`);
                      alert("Error: Could not find schedule data to duplicate.");
                 }
-                // --- END ADDED BLOCK ---
-    
          } else if (button.classList.contains('delete-schedule-btn')) {
-             if (confirm('Are you sure you want to delete this schedule?')) {
+             if (confirm(t('confirm_delete_schedule'))) {
                  console.log(`Deleting schedule ${scheduleId}...`);
                   const result = await fetchData(`/api/schedules/${scheduleId}`, { method: 'DELETE' });
                  if (result) { console.log("Delete successful", result); loadSchedules(); }
@@ -510,7 +533,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleSaveSchedule(event) {
-        // Handles submission of the add/edit schedule form
         event.preventDefault();
         console.log("Saving schedule... button clicked, form data:");
 
@@ -524,11 +546,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const startTime = formStartTime.value;
         const timezone = formTimezone.value || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-        if (!targetDeviceId) { alert("Please select a target device."); return; }
-        if (!startTime) { alert("Please select a start time."); return; }
-        if (!timezone) { alert("Please specify a timezone."); return; }
+        if (!targetDeviceId) { alert(t('select_device')); return; }
+        if (!startTime) { alert(t('start_time')); return; }
+        if (!timezone) { alert(t('timezone')); return; }
         if (!daysOfWeekStr && !isEditing) {
-             if (!confirm("No days selected. Schedule will play once when conditions match next, then stop. Continue?")) { return; }
+             if (!confirm(t('confirm_no_days'))) { return; }
         }
         const shuffleState = document.getElementById('form-shuffle').checked;
 
@@ -544,13 +566,11 @@ document.addEventListener('DOMContentLoaded', () => {
             timezone: timezone,
             shuffle_state: shuffleState,
         };
-        // Preserve is_active status when editing if form doesn't have an explicit toggle
          if (isEditing) {
              const originalData = JSON.parse(document.querySelector(`li[data-schedule-data*='"id":${scheduleId}']`)?.dataset.scheduleData || '{}');
-             scheduleData.is_active = originalData?.is_active ?? 1; // Keep original status
-              // Reset play_once_triggered only if days change from 'play once' to specific days or vice-versa
+             scheduleData.is_active = originalData?.is_active ?? 1;
              if((daysOfWeekStr && !originalData?.days_of_week) || (!daysOfWeekStr && originalData?.days_of_week)) {
-                  scheduleData.play_once_triggered = 0; // Backend should handle this based on days_of_week really
+                  scheduleData.play_once_triggered = 0;
              }
          }
 
@@ -566,51 +586,151 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
      function handlePlayNowFromForm() {
-         // Handles the "Play Now" button within the schedule form
          const playlistUri = formInputPlaylistUri.value;
          const deviceId = formDeviceSelect.value;
          const volume = formVolume.value ? parseInt(formVolume.value, 10) : null;
 
-         if (!playlistUri || !deviceId) { alert("Please select playlist and device."); return; }
+         if (!playlistUri || !deviceId) { alert(t('select_device')); return; }
 
          console.log(`Playing playlist ${playlistUri} on device ${deviceId} now...`);
-         playNowFormButton.textContent = "Playing..."; playNowFormButton.disabled = true;
+         playNowFormButton.textContent = t('playing'); playNowFormButton.disabled = true;
 
          fetchData('/api/play_now', { method: 'POST', body: JSON.stringify({ playlist_uri: playlistUri, device_id: deviceId, volume: volume }) })
          .then(result => {
-              if (result) { setTimeout(() => { showToast(result.message || "Playback initiated", "success"); playNowFormButton.textContent = "Play Now"; playNowFormButton.disabled = false; }, 500); }
-              else { playNowFormButton.textContent = "Play Now"; playNowFormButton.disabled = false; }
+              if (result) { setTimeout(() => { showToast(result.message || t('toast_playback_initiated'), "success"); playNowFormButton.textContent = t('play_now'); playNowFormButton.disabled = false; }, 500); }
+              else { playNowFormButton.textContent = t('play_now'); playNowFormButton.disabled = false; }
          });
     }
 
+    async function handleNpControl(action) {
+        const url = `/api/playback/${action}`;
+        const result = await fetchData(url, { method: 'POST' });
+        if (result) {
+            let toastKey = 'toast_playback_initiated';
+            if (action === 'pause') toastKey = 'toast_playback_paused';
+            if (action === 'play') toastKey = 'toast_playback_resumed';
+            if (action === 'next') toastKey = 'toast_next_track';
+            if (action === 'previous') toastKey = 'toast_prev_track';
+            showToast(result.message || t(toastKey), 'success');
+            setTimeout(updateNowPlaying, 800);
+        }
+    }
+
+    let lastVolumeBeforeMute = null;
+
+    function updateNpPlayPauseButtons(isPlaying) {
+        if (!npBtnPlay || !npBtnPause) return;
+        if (isPlaying) {
+            npBtnPlay.style.display = 'none';
+            npBtnPause.style.display = 'inline-flex';
+        } else {
+            npBtnPlay.style.display = 'inline-flex';
+            npBtnPause.style.display = 'none';
+        }
+    }
+
+    async function handleNpMuteToggle() {
+        if (!npBtnMute) return;
+        const isMuted = npBtnMute.dataset.muted === '1';
+        let targetVolume;
+        if (isMuted) {
+            targetVolume = lastVolumeBeforeMute !== null ? lastVolumeBeforeMute : 50;
+        } else {
+            const currentState = await fetchData('/api/current_playback');
+            lastVolumeBeforeMute = currentState && currentState.track ? (currentState.track.volume_percent || 50) : 50;
+            targetVolume = 0;
+        }
+        const result = await fetchData('/api/playback/volume', { method: 'POST', body: JSON.stringify({volume: targetVolume}) });
+        if (result) {
+            if (isMuted) {
+                npBtnMute.dataset.muted = '0';
+                npBtnMute.textContent = '🔊';
+                npBtnMute.title = 'Mute';
+            } else {
+                npBtnMute.dataset.muted = '1';
+                npBtnMute.textContent = '🔇';
+                npBtnMute.title = 'Unmute';
+            }
+            setTimeout(updateNowPlaying, 500);
+        }
+    }
 
     // --- UI Helper Functions ---
+    async function handleExportSchedules() {
+        const data = await fetchData('/api/schedules/export');
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `playsched-backup-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(t('toast_exported', 'Schedules exported'), 'success');
+    }
+
+    async function handleImportSchedules(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+            if (!json.schedules || !Array.isArray(json.schedules)) {
+                alert('Invalid file format: missing "schedules" array');
+                return;
+            }
+            if (!confirm(`Import ${json.schedules.length} schedules?`)) return;
+            const result = await fetchData('/api/schedules/import', {
+                method: 'POST',
+                body: JSON.stringify(json)
+            });
+            if (result) {
+                showToast(t('toast_imported', 'Schedules imported') + `: ${result.imported}/${result.total}`, result.errors?.length ? 'warning' : 'success');
+                loadSchedules();
+            }
+        } catch (e) {
+            alert('Error reading file: ' + e.message);
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    async function handleTestDevice() {
+        const deviceId = formDeviceSelect.value;
+        const playlistUri = formInputPlaylistUri.value;
+        if (!deviceId) { alert(t('select_device')); return; }
+        testDeviceButton.disabled = true;
+        testDeviceButton.textContent = 'Testing...';
+        const result = await fetchData('/api/test_device', {
+            method: 'POST',
+            body: JSON.stringify({ device_id: deviceId, playlist_uri: playlistUri })
+        });
+        if (result) {
+            showToast(result.message || 'Test playback started', 'info');
+        }
+        testDeviceButton.disabled = false;
+        testDeviceButton.textContent = '🔊 Test';
+    }
+
     function openScheduleForm(data = {}) {
-        // 1. Reset the form to clear previous values
         scheduleForm.reset();
-        formScheduleId.value = ''; // Clear hidden ID field
-    
-        // 2. Always try to populate fields from the passed 'data' object
+        formScheduleId.value = '';
+
         formPlaylistName.textContent = data.playlist_name || 'N/A';
         formPlaylistUri.textContent = data.playlist_uri || 'N/A';
         formInputPlaylistUri.value = data.playlist_uri || '';
         formInputPlaylistName.value = data.playlist_name || '';
-    
-        // Re-render device options to ensure they are fresh *before* setting value
-        renderDeviceOptions(currentDevices); // Assumes currentDevices is populated
-        // Set device if available in data
+
+        renderDeviceOptions(currentDevices);
         if (data.target_device_id) {
             formDeviceSelect.value = data.target_device_id;
-            // Small delay might sometimes help ensure options are rendered before setting value
-            // setTimeout(() => { formDeviceSelect.value = data.target_device_id; }, 50);
         } else {
-             formDeviceSelect.value = ''; // Explicitly clear if not in data
+             formDeviceSelect.value = '';
         }
-    
-    
-        // Reset days checkboxes first
+
         toggleAllDays(false);
-        // Set days if available in data
         const days = data.days_of_week ? data.days_of_week.split(',').map(d => d.trim()) : [];
         days.forEach(dayIndex => {
             try {
@@ -625,57 +745,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) { console.error("Error parsing day index:", dayIndex, e); }
         });
-    
-        // Set time, volume, timezone if available in data
+
         formStartTime.value = data.start_time_local || '';
         formStopTime.value = data.stop_time_local || '';
         formVolume.value = data.volume !== null ? data.volume : '';
-        // Use provided timezone, otherwise default to browser/sensible default
         formTimezone.value = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris';
-    
-        // Set shuffle state if available in data
+
         const shuffleCheckbox = document.getElementById('form-shuffle');
-        if (shuffleCheckbox) { // Ensure checkbox exists
-            shuffleCheckbox.checked = data.shuffle_state ? true : false; // Set checked based on data
+        if (shuffleCheckbox) {
+            shuffleCheckbox.checked = data.shuffle_state ? true : false;
         }
-    
-        // 3. Set Form Title and ID *only if editing*
+
         if (data.id) {
-            formTitle.textContent = 'Edit Schedule';
-            formScheduleId.value = data.id; // Set the hidden ID field
+            formTitle.textContent = t('edit_schedule');
+            formScheduleId.value = data.id;
         } else if (Object.keys(data).length > 0 && data.playlist_uri) {
-            // If data was passed but it has no ID, assume it's a duplicate
-            formTitle.textContent = 'Add Schedule (from Duplicate)';
-            // Ensure default timezone is set only for brand new, not duplicate
+            formTitle.textContent = t('add_schedule_from_duplicate');
         } else {
-            // No data passed or empty object, so it's a new schedule from scratch
-            formTitle.textContent = 'Add Schedule';
-            // Set default timezone for brand new schedules
+            formTitle.textContent = t('add_schedule');
             formTimezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris';
         }
-    
-        // 4. Show and scroll to the form
+
         scheduleFormContainer.style.display = 'block';
         scheduleFormContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function hideScheduleForm() {
-        // Hides and resets the schedule form
         scheduleFormContainer.style.display = 'none';
         scheduleForm.reset();
         formScheduleId.value = '';
     }
 
      function toggleAllDays(select) {
-        // Checks or unchecks all day-of-week checkboxes
         const checkboxes = document.querySelectorAll('#schedule-form input[id^="day-"]');
         checkboxes.forEach(cb => cb.checked = select);
     }
 
     function getDaysString(daysOfWeekStr) {
-        // Helper to convert "0,1,6" to "Mon, Tue, Sun"
-        if (!daysOfWeekStr) return "Once"; // Should match backend logic for empty string meaning play once
-        const daysMap = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        if (!daysOfWeekStr) return t('play_once');
+        const daysMap = [t('mon'), t('tue'), t('wed'), t('thu'), t('fri'), t('sat'), t('sun')];
         try {
             return daysOfWeekStr.split(',')
                                .map(d => parseInt(d.trim(), 10))
@@ -696,8 +804,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function initNowPlaying() {
         updateNowPlaying();
         nowPlayingInterval = setInterval(updateNowPlaying, 5000);
-        // Also update progress bar every second for smoothness
         setInterval(updateProgressBar, 1000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (nowPlayingInterval) {
+                    clearInterval(nowPlayingInterval);
+                    nowPlayingInterval = null;
+                }
+            } else {
+                updateNowPlaying();
+                if (!nowPlayingInterval) {
+                    nowPlayingInterval = setInterval(updateNowPlaying, 5000);
+                }
+            }
+        });
     }
 
     async function updateNowPlaying() {
@@ -748,13 +869,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateProgressBar();
 
-        if (data.next_track) {
-            if (nextTitle) nextTitle.textContent = data.next_track.name;
-            if (nextArtist) nextArtist.textContent = data.next_track.artists;
-        } else {
-            if (nextTitle) nextTitle.textContent = '--';
-            if (nextArtist) nextArtist.textContent = '--';
+        const upNextList = document.getElementById('np-up-next-list');
+        if (upNextList) {
+            if (data.up_next && data.up_next.length > 0) {
+                upNextList.innerHTML = data.up_next.map((t, i) => `
+                    <div class="np-up-next-item" style="margin-top: ${i > 0 ? '8px' : '0'}; padding-top: ${i > 0 ? '8px' : '0'}; ${i > 0 ? 'border-top: 1px solid var(--border);' : ''}">
+                        <div class="np-next-title">${t.name.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+                        <div class="np-next-artist">${t.artists.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+                    </div>
+                `).join('');
+            } else {
+                upNextList.innerHTML = '<div class="np-next-title">--</div><div class="np-next-artist">--</div>';
+            }
         }
+
+        updateNpPlayPauseButtons(data.is_playing);
     }
 
     function hideNowPlaying() {
@@ -780,7 +909,81 @@ document.addEventListener('DOMContentLoaded', () => {
         return minutes + ':' + String(seconds).padStart(2, '0');
     }
 
+    // --- Panel Login Overlay ---
+    async function checkPanelAuth() {
+        try {
+            const response = await fetch('/api/panel_auth_status');
+            const data = await response.json();
+            if (data.required && !data.authenticated) {
+                showPanelLoginOverlay();
+                return false;
+            }
+            hidePanelLoginOverlay();
+            init();
+            return true;
+        } catch (e) {
+            console.error('Panel auth check failed:', e);
+            init();
+            return true;
+        }
+    }
+
+    function showPanelLoginOverlay() {
+        const overlay = document.getElementById('panel-login-overlay');
+        if (overlay) overlay.style.display = 'flex';
+        setupPanelLoginListeners();
+    }
+
+    function hidePanelLoginOverlay() {
+        const overlay = document.getElementById('panel-login-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    function setupPanelLoginListeners() {
+        const btn = document.getElementById('panel-login-button');
+        const input = document.getElementById('panel-password-input');
+        const errorEl = document.getElementById('panel-login-error');
+        if (!btn || !input) return;
+
+        btn.addEventListener('click', async () => {
+            errorEl.textContent = '';
+            try {
+                const resp = await fetch('/api/panel_login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: input.value})
+                });
+                if (resp.ok) {
+                    hidePanelLoginOverlay();
+                    const mainApp = document.getElementById('main-app');
+                    if (mainApp) mainApp.style.display = '';
+                    const authSection = document.getElementById('auth-section');
+                    if (authSection) authSection.style.display = '';
+                    init();
+                } else {
+                    errorEl.textContent = t('panel_login_error', 'Invalid password');
+                    input.value = '';
+                    input.focus();
+                }
+            } catch (e) {
+                errorEl.textContent = t('error_network');
+            }
+        });
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btn.click();
+        });
+        input.focus();
+    }
+
+    // --- Register Service Worker (PWA) ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/js/sw.js')
+            .then(() => console.log('Service Worker registered'))
+            .catch((err) => console.log('Service Worker registration failed:', err));
+    }
+
     // --- Start the App ---
-    init();
+    checkPanelAuth();
 
 }); // End DOMContentLoaded

@@ -2,19 +2,70 @@ import sqlite3
 import os
 import datetime
 from dotenv import load_dotenv
+from cryptography.fernet import Fernet
 
 load_dotenv()
 SCHEDULE_DB_FILE = os.getenv("SCHEDULE_DB_FILE", "playsched.db")
 
+__all__ = [
+    "SCHEDULE_DB_FILE",
+    "get_db_connection",
+    "create_tables",
+    "add_schedule",
+    "get_all_schedules",
+    "get_schedule_by_id",
+    "update_schedule",
+    "delete_schedule",
+    "toggle_schedule_active",
+    "get_active_schedules_for_scheduler",
+    "update_schedule_trigger_info",
+    "save_user_token",
+    "get_user_token",
+    "delete_user_token",
+    "list_user_ids_with_tokens",
+    "acquire_scheduler_lock",
+    "release_scheduler_lock",
+    "renew_scheduler_lock",
+]
 
-def get_db_connection():
+
+def _get_cipher():
+    """Returns a Fernet cipher instance using TOKEN_ENCRYPTION_KEY from env."""
+    key = os.getenv("TOKEN_ENCRYPTION_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "TOKEN_ENCRYPTION_KEY is not set. Generate one with:\n"
+            "python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+    return Fernet(key.encode())
+
+
+def encrypt_token(plaintext: str) -> str:
+    """Encrypts a token string. Returns ciphertext string."""
+    if not plaintext:
+        return ""
+    return _get_cipher().encrypt(plaintext.encode()).decode()
+
+
+def decrypt_token(ciphertext: str) -> str:
+    """Decrypts a token string. Falls back to returning raw value if decryption fails (plaintext legacy)."""
+    if not ciphertext:
+        return ""
+    try:
+        return _get_cipher().decrypt(ciphertext.encode()).decode()
+    except Exception:
+        # Likely already plaintext (legacy). Return as-is so it gets re-encrypted on next save.
+        return ciphertext
+
+
+def get_db_connection() -> sqlite3.Connection:
     """Establishes and returns a database connection."""
     conn = sqlite3.connect(SCHEDULE_DB_FILE)
     conn.row_factory = sqlite3.Row  # Return rows as dictionary-like objects
     return conn
 
 
-def create_tables():
+def create_tables() -> None:
     """Creates the schedules table if it doesn't exist (including shuffle_state)."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -37,7 +88,8 @@ def create_tables():
                 timezone TEXT NOT NULL,
                 play_once_triggered BOOLEAN DEFAULT 0,
                 last_triggered_utc TEXT,
-                shuffle_state BOOLEAN DEFAULT 0 -- Added shuffle state (0=false, 1=true)
+                shuffle_state BOOLEAN DEFAULT 0, -- Added shuffle state (0=false, 1=true)
+                sort_order INTEGER DEFAULT 0
             )
         """
         )
@@ -118,6 +170,19 @@ def create_tables():
         )
         # --- end token cache table ---
 
+        # --- Scheduler distributed lock table ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scheduler_lock (
+                lock_name TEXT PRIMARY KEY,
+                acquired_by TEXT NOT NULL,
+                acquired_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+            """
+        )
+        # --- end scheduler lock table ---
+
         conn.commit()
         print("Database tables checked/created.")
     except sqlite3.Error as e:
@@ -130,14 +195,14 @@ def create_tables():
 # --- CRUD Functions for Schedules ---
 
 
-def add_schedule(data):
+def add_schedule(data: dict) -> int | None:
     # Add shuffle_state to INSERT
     sql = (
         "INSERT INTO schedules(user_spotify_id, playlist_uri, playlist_name, "
         "target_device_id, target_device_name, days_of_week, start_time_local, "
         "stop_time_local, volume, is_active, timezone, play_once_triggered, "
-        "last_triggered_utc, shuffle_state) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"  # Added one placeholder
+        "last_triggered_utc, shuffle_state, sort_order) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )
     conn = get_db_connection()
     try:
@@ -147,9 +212,9 @@ def add_schedule(data):
             (
                 data["user_spotify_id"],
                 data["playlist_uri"],
-                data["playlist_name"],
+                data.get("playlist_name", ""),
                 data["target_device_id"],
-                data["target_device_name"],
+                data.get("target_device_name", ""),
                 data["days_of_week"],
                 data["start_time_local"],
                 data.get("stop_time_local"),
@@ -158,7 +223,8 @@ def add_schedule(data):
                 data["timezone"],
                 data.get("play_once_triggered", 0),
                 None,
-                data.get("shuffle_state", 0),  # Get shuffle state, default 0
+                data.get("shuffle_state", 0),
+                data.get("sort_order", 0),
             ),
         )
         conn.commit()
@@ -170,13 +236,14 @@ def add_schedule(data):
         conn.close()
 
 
-def get_all_schedules(user_spotify_id):
+def get_all_schedules(user_spotify_id: str) -> list[dict]:
     """Retrieves all schedules for a given user."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM schedules WHERE user_spotify_id = ?", (user_spotify_id,)
+            "SELECT * FROM schedules WHERE user_spotify_id = ? ORDER BY sort_order ASC, id ASC",
+            (user_spotify_id,)
         )
         schedules = [dict(row) for row in cursor.fetchall()]
         return schedules
@@ -187,7 +254,7 @@ def get_all_schedules(user_spotify_id):
         conn.close()
 
 
-def get_schedule_by_id(schedule_id, user_spotify_id):
+def get_schedule_by_id(schedule_id: int, user_spotify_id: str) -> dict | None:
     """Retrieves a specific schedule by ID for a user."""
     conn = get_db_connection()
     try:
@@ -205,7 +272,7 @@ def get_schedule_by_id(schedule_id, user_spotify_id):
         conn.close()
 
 
-def update_schedule(schedule_id, user_spotify_id, data):
+def update_schedule(schedule_id: int, user_spotify_id: str, data: dict) -> bool:
     fields = []
     values = []
     # Add shuffle_state to allowed fields
@@ -221,6 +288,7 @@ def update_schedule(schedule_id, user_spotify_id, data):
         "is_active",
         "timezone",
         "shuffle_state",
+        "sort_order",
     ]
     for field in allowed_fields:
         if field in data:
@@ -252,7 +320,7 @@ def update_schedule(schedule_id, user_spotify_id, data):
         conn.close()
 
 
-def delete_schedule(schedule_id, user_spotify_id):
+def delete_schedule(schedule_id: int, user_spotify_id: str) -> bool:
     """Deletes a schedule."""
     sql = "DELETE FROM schedules WHERE id = ? AND user_spotify_id = ?"
     conn = get_db_connection()
@@ -268,7 +336,7 @@ def delete_schedule(schedule_id, user_spotify_id):
         conn.close()
 
 
-def toggle_schedule_active(schedule_id, user_spotify_id):
+def toggle_schedule_active(schedule_id: int, user_spotify_id: str) -> bool:
     """Toggles the is_active status of a schedule."""
     # First get current status
     current_schedule = get_schedule_by_id(schedule_id, user_spotify_id)
@@ -290,7 +358,7 @@ def toggle_schedule_active(schedule_id, user_spotify_id):
         conn.close()
 
 
-def get_active_schedules_for_scheduler():
+def get_active_schedules_for_scheduler() -> list[dict]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -310,7 +378,38 @@ def get_active_schedules_for_scheduler():
         conn.close()
 
 
-def update_schedule_trigger_info(schedule_id, trigger_time_utc_iso, played_once=False):
+def swap_sort_order(schedule_id_a: int, schedule_id_b: int, user_spotify_id: str) -> bool:
+    """Swaps sort_order between two schedules."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, sort_order FROM schedules WHERE id IN (?, ?) AND user_spotify_id = ?",
+            (schedule_id_a, schedule_id_b, user_spotify_id)
+        )
+        rows = cursor.fetchall()
+        if len(rows) != 2:
+            return False
+        order_a = dict(rows[0])["sort_order"]
+        order_b = dict(rows[1])["sort_order"]
+        cursor.execute(
+            "UPDATE schedules SET sort_order = ? WHERE id = ?",
+            (order_b, schedule_id_a)
+        )
+        cursor.execute(
+            "UPDATE schedules SET sort_order = ? WHERE id = ?",
+            (order_a, schedule_id_b)
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error swapping sort order: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_schedule_trigger_info(schedule_id: int, trigger_time_utc_iso: str, played_once: bool = False) -> None:
     """Updates trigger info after a schedule runs."""
     conn = get_db_connection()
     try:
@@ -335,8 +434,8 @@ def update_schedule_trigger_info(schedule_id, trigger_time_utc_iso, played_once=
 # --- Token CRUD ---
 
 
-def save_user_token(user_id, token_info):
-    """Upserts Spotify token info for a user."""
+def save_user_token(user_id: str, token_info: dict) -> bool:
+    """Upserts Spotify token info for a user. Encrypts refresh_token at rest."""
     sql = (
         "INSERT INTO user_tokens (user_spotify_id, access_token, refresh_token, "
         "expires_at, token_type, scope, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
@@ -353,7 +452,7 @@ def save_user_token(user_id, token_info):
             (
                 user_id,
                 token_info.get("access_token"),
-                token_info.get("refresh_token"),
+                encrypt_token(token_info.get("refresh_token")),
                 token_info.get("expires_at"),
                 token_info.get("token_type"),
                 token_info.get("scope"),
@@ -369,8 +468,8 @@ def save_user_token(user_id, token_info):
         conn.close()
 
 
-def get_user_token(user_id):
-    """Retrieves token info dict for a user, or None."""
+def get_user_token(user_id: str) -> dict | None:
+    """Retrieves token info dict for a user, or None. Decrypts refresh_token."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -384,7 +483,7 @@ def get_user_token(user_id):
             return None
         return {
             "access_token": row["access_token"],
-            "refresh_token": row["refresh_token"],
+            "refresh_token": decrypt_token(row["refresh_token"]),
             "expires_at": row["expires_at"],
             "token_type": row["token_type"],
             "scope": row["scope"],
@@ -396,7 +495,7 @@ def get_user_token(user_id):
         conn.close()
 
 
-def delete_user_token(user_id):
+def delete_user_token(user_id: str) -> bool:
     """Deletes a user's token record."""
     conn = get_db_connection()
     try:
@@ -411,7 +510,7 @@ def delete_user_token(user_id):
         conn.close()
 
 
-def list_user_ids_with_tokens():
+def list_user_ids_with_tokens() -> list[str]:
     """Returns a list of user_spotify_id strings that have stored tokens."""
     conn = get_db_connection()
     try:
@@ -423,6 +522,98 @@ def list_user_ids_with_tokens():
     except sqlite3.Error as e:
         print(f"Database error listing users with tokens: {e}")
         return []
+    finally:
+        conn.close()
+
+
+# --- Scheduler Lock Functions ---
+
+
+SCHEDULER_LOCK_NAME = "scheduler_main"
+DEFAULT_LOCK_TTL_SECONDS = 300
+
+
+def acquire_scheduler_lock(instance_id: str, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS) -> bool:
+    """Attempts to acquire the scheduler lock. Returns True if acquired or already held by this instance."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expires = now + datetime.timedelta(seconds=ttl_seconds)
+    conn = get_db_connection()
+    try:
+        # Use immediate transaction to reduce race-conditions between connections
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT acquired_by, expires_at FROM scheduler_lock WHERE lock_name = ?",
+            (SCHEDULER_LOCK_NAME,),
+        )
+        row = cursor.fetchone()
+        if row:
+            expires_existing = datetime.datetime.fromisoformat(row["expires_at"])
+            if expires_existing > now and row["acquired_by"] != instance_id:
+                conn.rollback()
+                return False
+            # Expired or same instance — update
+            cursor.execute(
+                "UPDATE scheduler_lock SET acquired_by = ?, acquired_at = ?, expires_at = ? WHERE lock_name = ?",
+                (instance_id, now.isoformat(), expires.isoformat(), SCHEDULER_LOCK_NAME),
+            )
+        else:
+            try:
+                cursor.execute(
+                    "INSERT INTO scheduler_lock (lock_name, acquired_by, acquired_at, expires_at) VALUES (?, ?, ?, ?)",
+                    (SCHEDULER_LOCK_NAME, instance_id, now.isoformat(), expires.isoformat()),
+                )
+            except sqlite3.IntegrityError:
+                # Another connection inserted between our SELECT and INSERT
+                conn.rollback()
+                return False
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error acquiring scheduler lock: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        conn.close()
+
+
+def release_scheduler_lock(instance_id: str) -> bool:
+    """Releases the scheduler lock if held by the given instance."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM scheduler_lock WHERE lock_name = ? AND acquired_by = ?",
+            (SCHEDULER_LOCK_NAME, instance_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Database error releasing scheduler lock: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def renew_scheduler_lock(instance_id: str, ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS) -> bool:
+    """Renews the lock TTL while the job is running."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expires = now + datetime.timedelta(seconds=ttl_seconds)
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE scheduler_lock SET expires_at = ? WHERE lock_name = ? AND acquired_by = ?",
+            (expires.isoformat(), SCHEDULER_LOCK_NAME, instance_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Database error renewing scheduler lock: {e}")
+        return False
     finally:
         conn.close()
 

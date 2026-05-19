@@ -1,7 +1,10 @@
 # scheduler.py
 import time
+import logging
 from datetime import datetime
 import pytz  # Required for timezone handling (pip install pytz)
+import socket
+import os
 
 import spotipy
 from spotipy.exceptions import SpotifyException
@@ -12,7 +15,7 @@ import spotify_client
 
 
 # --- Spotify Client Retrieval ---
-def get_scheduler_spotify_client(user_spotify_id, logger):
+def get_scheduler_spotify_client(user_spotify_id: str, logger: logging.Logger) -> spotipy.Spotify | None:
     """Gets an authenticated Spotipy client for the scheduler from the DB token cache."""
     logger.info(
         f"Attempting to get Spotify client for user '{user_spotify_id}' from DB..."
@@ -58,7 +61,7 @@ def get_scheduler_spotify_client(user_spotify_id, logger):
 
 
 # --- Database Interaction ---
-def fetch_potentially_due_schedules_from_db(logger):
+def fetch_potentially_due_schedules_from_db(logger: logging.Logger) -> list[dict]:
     """Fetches all active schedules from the database."""
     logger.debug("Fetching active schedules from database...")
     try:
@@ -73,7 +76,7 @@ def fetch_potentially_due_schedules_from_db(logger):
 
 
 # --- Spotify Action Logic ---
-def perform_spotify_action(sp, schedule, logger):
+def perform_spotify_action(sp: spotipy.Spotify, schedule: dict, logger: logging.Logger) -> bool:
     """Execute the desired Spotify action based on schedule details."""
     # Assuming 'start_playback' is the primary action for now
     action = "start_playback"  # Can be extended based on DB field later if needed
@@ -206,9 +209,24 @@ def perform_spotify_action(sp, schedule, logger):
 
 
 # --- Scheduler Job Definition ---
-def check_schedules(logger):
+def check_schedules(logger: logging.Logger) -> None:
     """Job run periodically to check for and execute OR stop due schedules."""
+    instance_id = f"{socket.gethostname()}-{os.getpid()}"
+
+    if not database.acquire_scheduler_lock(instance_id):
+        logger.debug("Scheduler: Lock held by another instance. Skipping check.")
+        return
+
     logger.info("Scheduler: check_schedules job started.")
+    try:
+        _check_schedules_core(logger)
+    finally:
+        database.release_scheduler_lock(instance_id)
+        logger.info("Scheduler: check_schedules job finished.")
+
+
+def _check_schedules_core(logger: logging.Logger) -> None:
+    """Core logic for checking and executing schedules (runs under lock)."""
     now_utc = datetime.now(pytz.utc)
     all_active_schedules = fetch_potentially_due_schedules_from_db(logger)
 
@@ -483,5 +501,3 @@ def check_schedules(logger):
         logger.info(
             "Scheduler: No schedules potentially due to STOP this cycle."
         )  # Adjusted message
-
-    logger.info("Scheduler: check_schedules job finished.")

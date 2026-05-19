@@ -1,9 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PlaySched</title>
+    <meta name="theme-color" content="#1DB954">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PlaySched">
+    <title>{{ i18n.title }}</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='android-chrome-512x512.png') }}">
     <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='android-chrome-192x192.png') }}">
@@ -13,6 +18,19 @@
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     </head>
 <body>
+    <div id="panel-login-overlay" style="display: none; position: fixed; inset: 0; background: var(--bg-primary); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+        <div class="header-icon" style="margin-bottom: 16px;">
+            <img src="{{ url_for('static', filename='android-chrome-512x512.png') }}" alt="PlaySched Icon" style="height: 80px; width: auto; border-radius: 16px;">
+        </div>
+        <div style="background: var(--bg-card); padding: 32px; border-radius: 16px; text-align: center; max-width: 400px; width: 90%; border: 1px solid var(--border); box-shadow: var(--shadow-lg);">
+            <h2 style="margin-bottom: 8px; color: var(--accent);">{{ i18n.title }}</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;">{{ i18n.panel_password_prompt }}</p>
+            <input type="password" id="panel-password-input" placeholder="{{ i18n.panel_password_placeholder }}" style="width: 100%; padding: 12px 14px; margin-bottom: 16px; font-size: 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-secondary); color: var(--text-primary);">
+            <button id="panel-login-button" style="width: 100%; padding: 12px;">{{ i18n.panel_login_button }}</button>
+            <p id="panel-login-error" style="color: var(--danger); margin-top: 12px; min-height: 1.2em;"></p>
+        </div>
+    </div>
+
     <div class="header-container">
         {# Div for the icon #}
         <div class="header-icon">
@@ -20,15 +38,20 @@
         </div>
         {# Div for the text content #}
         <div class="header-content">
-            <h1>PlaySched - Spotify Playlist Scheduler</h1>
+            <h1>{{ i18n.title }}</h1>
             <div id="auth-section">
                 {% if not logged_in %}
-                    <p>Please log in with Spotify to use the scheduler.</p>
-                    <button id="login-button">Login with Spotify</button>
+                    <p>{{ i18n.login_prompt }}</p>
+                    <button id="login-button">{{ i18n.login_button }}</button>
                 {% else %}
-                    <p>Welcome, {{ display_name }}! <button id="logout-button">Logout</button> <button id="theme-toggle" title="Toggle dark mode">🌙</button></p>
+                    <p>{{ i18n.welcome.format(name=display_name) }} <button id="logout-button">{{ i18n.logout }}</button> <button id="panel-logout-button" title="{{ i18n.panel_logout }}">🔒</button> <button id="theme-toggle" title="Toggle dark mode">🌙</button></p>
                 {% endif %}
             </div>
+        </div>
+        <div class="header-lang">
+            {% for code in available_langs %}
+            <button class="lang-btn {% if code == lang %}active{% endif %}" data-lang="{{ code }}" title="{{ language_names.get(code, code) }}">{{ code.upper() }}</button>
+            {% endfor %}
         </div>
         {% if logged_in %}
         <div class="header-clock">
@@ -42,7 +65,7 @@
         <div class="np-current">
             <img id="np-cover" src="" alt="Cover" class="np-cover">
             <div class="np-info">
-                <div class="np-label">Teraz gra</div>
+                <div class="np-label">{{ i18n.now_playing }}</div>
                 <div id="np-title" class="np-title">--</div>
                 <div id="np-artist" class="np-artist">--</div>
                 <div class="np-progress-bar">
@@ -53,98 +76,115 @@
                     <span id="np-device" class="np-device">--</span>
                     <span id="np-duration">0:00</span>
                 </div>
+                <div class="np-controls">
+                    <button id="np-btn-prev" class="np-btn" title="{{ i18n.previous }}">⏮</button>
+                    <button id="np-btn-play" class="np-btn" title="{{ i18n.play }}" style="display:none;">▶</button>
+                    <button id="np-btn-pause" class="np-btn" title="{{ i18n.pause }}">⏸</button>
+                    <button id="np-btn-stop" class="np-btn" title="{{ i18n.stop }}">⏹</button>
+                    <button id="np-btn-next" class="np-btn" title="{{ i18n.next }}">⏭</button>
+                    <button id="np-btn-mute" class="np-btn" title="Mute">🔊</button>
+                </div>
             </div>
         </div>
         <div class="np-next">
-            <div class="np-label-small">Następna</div>
-            <div id="np-next-title" class="np-next-title">--</div>
-            <div id="np-next-artist" class="np-next-artist">--</div>
+            <div class="np-label-small">{{ i18n.up_next }}</div>
+            <div id="np-up-next-list">
+                <div id="np-next-title" class="np-next-title">--</div>
+                <div id="np-next-artist" class="np-next-artist">--</div>
+            </div>
         </div>
     </div>
     <div id="main-app">
         <div class="tab-container">
-            <button class="tab-button active" data-tab="playlists-tab">My Playlists</button>
-            <button class="tab-button" data-tab="schedules-tab">Scheduled Playlists</button>
+            <button class="tab-button active" data-tab="playlists-tab">{{ i18n.my_playlists }}</button>
+            <button class="tab-button" data-tab="schedules-tab">{{ i18n.scheduled_playlists }}</button>
         </div>
 
         <div id="playlists-tab" class="tab-content active">
-            <h2>My Spotify Playlists</h2>
+            <h2>{{ i18n.my_playlists }}</h2>
             <div class="controls">
-                <button id="refresh-playlists">Refresh Playlists</button>
-                <input type="search" id="playlist-search" placeholder="Filter playlists by name..." style="margin-left: 15px; padding: 5px;">
+                <button id="refresh-playlists">{{ i18n.refresh_playlists }}</button>
+                <input type="search" id="playlist-search" placeholder="{{ i18n.playlist_filter_placeholder }}" style="margin-left: 15px; padding: 5px;">
             </div>
             <ul id="playlist-list">
-                <li>Loading playlists...</li>
+                <li>{{ i18n.loading_playlists }}</li>
             </ul>
-            <div id="playlist-pagination" class="pagination-controls" style="display: none;"> <button id="playlist-prev" disabled>&lt; Previous</button>
+            <div id="playlist-pagination" class="pagination-controls" style="display: none;">
+                <button id="playlist-prev" disabled>&lt; {{ i18n.previous }}</button>
                 <span id="playlist-page-info">Page 1 of ?</span>
-                <button id="playlist-next" disabled>Next &gt;</button>
+                <button id="playlist-next" disabled>{{ i18n.next }} &gt;</button>
             </div>
         </div>
 
         <div id="schedules-tab" class="tab-content">
-            <h2>Scheduled Playlists</h2>
-            <button id="refresh-schedules">Refresh Schedules</button>
+            <h2>{{ i18n.scheduled_playlists }}</h2>
+            <div class="controls">
+                <button id="refresh-schedules">{{ i18n.refresh_schedules }}</button>
+                <button id="export-schedules-button" type="button">⬇️ {{ i18n.export_schedules }}</button>
+                <button id="import-schedules-button" type="button">⬆️ {{ i18n.import_schedules }}</button>
+                <input type="file" id="import-schedules-file" accept=".json" style="display:none;">
+            </div>
             <ul id="schedule-list">
-                <li>Loading schedules...</li>
+                <li>{{ i18n.loading_schedules }}</li>
             </ul>
         </div>
 
         <div id="schedule-form-container" style="display: none; border: 1px solid #ccc; padding: 15px; margin-top: 20px;">
-            <h3 id="form-title">Add/Edit Schedule</h3>
+            <h3 id="form-title">{{ i18n.add_schedule }}</h3>
             <form id="schedule-form">
-                <input type="hidden" id="schedule-id"> <div>Playlist: <strong id="form-playlist-name"></strong> (<span id="form-playlist-uri"></span>)</div>
+                <input type="hidden" id="schedule-id">
+                <div>Playlist: <strong id="form-playlist-name"></strong> (<span id="form-playlist-uri"></span>)</div>
                 <input type="hidden" id="form-input-playlist-uri">
                 <input type="hidden" id="form-input-playlist-name">
 
-
                 <div>
-                    <label for="form-device">Device:</label>
+                    <label for="form-device">{{ i18n.device }}:</label>
                     <select id="form-device" required>
-                        <option value="">Loading devices...</option>
+                        <option value="">{{ i18n.loading }}</option>
                     </select>
+                    <button type="button" id="test-device-button" title="{{ i18n.test_device }}">🔊 {{ i18n.test_device }}</button>
                 </div>
 
                 <div>
-                    <label>Days of Week (Leave blank to play once only):</label><br>
-                    <input type="checkbox" id="day-mon" value="0"> Mon
-                    <input type="checkbox" id="day-tue" value="1"> Tue
-                    <input type="checkbox" id="day-wed" value="2"> Wed
-                    <input type="checkbox" id="day-thu" value="3"> Thu
-                    <input type="checkbox" id="day-fri" value="4"> Fri
-                    <input type="checkbox" id="day-sat" value="5"> Sat
-                    <input type="checkbox" id="day-sun" value="6"> Sun
+                    <label>{{ i18n.days_of_week }}</label><br>
+                    <input type="checkbox" id="day-mon" value="0"> {{ i18n.mon }}
+                    <input type="checkbox" id="day-tue" value="1"> {{ i18n.tue }}
+                    <input type="checkbox" id="day-wed" value="2"> {{ i18n.wed }}
+                    <input type="checkbox" id="day-thu" value="3"> {{ i18n.thu }}
+                    <input type="checkbox" id="day-fri" value="4"> {{ i18n.fri }}
+                    <input type="checkbox" id="day-sat" value="5"> {{ i18n.sat }}
+                    <input type="checkbox" id="day-sun" value="6"> {{ i18n.sun }}
                     <span class="day-selector-actions">
-                        <button type="button" id="select-all-days">All</button>
-                        <button type="button" id="select-no-days">None (Play Once)</button>
+                        <button type="button" id="select-all-days">{{ i18n.all }}</button>
+                        <button type="button" id="select-no-days">{{ i18n.none_play_once }}</button>
                     </span>
                 </div>
 
                 <div>
-                    <label for="form-start-time">Start Time (HH:MM):</label>
+                    <label for="form-start-time">{{ i18n.start_time }}</label>
                     <input type="time" id="form-start-time" required>
                 </div>
                 <div>
-                    <label for="form-stop-time">Stop Time (HH:MM, Optional):</label>
+                    <label for="form-stop-time">{{ i18n.stop_time }}</label>
                     <input type="time" id="form-stop-time">
                 </div>
                  <div>
-                    <label for="form-volume">Volume (0-100, Optional):</label>
+                    <label for="form-volume">{{ i18n.volume }}</label>
                     <input type="number" id="form-volume" min="0" max="100">
                 </div>
                 <div>
-                    <label for="form-timezone">Timezone:</label>
+                    <label for="form-timezone">{{ i18n.timezone }}</label>
                     <input type="text" id="form-timezone" value="Europe/Paris" required>
                 </div>
                 <div class="form-check">
                     <input type="checkbox" id="form-shuffle" value="true">
-                    <label for="form-shuffle">Play in Shuffle Mode</label>
+                    <label for="form-shuffle">{{ i18n.shuffle }}</label>
                 </div>
 
                 <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button type="submit" id="save-schedule-button">Save Schedule</button>
-                    <button type="button" id="cancel-schedule-button" style="background: linear-gradient(135deg, #95a5a6, #7f8c8d);">Cancel</button>
-                    <button type="button" id="play-now-form-button">Play Now</button>
+                    <button type="submit" id="save-schedule-button">{{ i18n.save_schedule }}</button>
+                    <button type="button" id="cancel-schedule-button" style="background: linear-gradient(135deg, #95a5a6, #7f8c8d);">{{ i18n.cancel }}</button>
+                    <button type="button" id="play-now-form-button">{{ i18n.play_now }}</button>
                 </div>
 
             </form>
@@ -154,6 +194,10 @@
     {% endif %}
 
     <div id="toast-container"></div>
+    <script>
+        window.I18N = {{ i18n | tojson }};
+        window.LANG = "{{ lang }}";
+    </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

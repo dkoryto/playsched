@@ -6,8 +6,15 @@ import datetime
 import pytz
 import os
 
+__all__ = [
+    "update_history_db",
+    "show_recent_playlists",
+    "sync_all_playlists_and_tracks",
+    "export_data_to_file",
+]
 
-def update_history_db(sp, conn):
+
+def update_history_db(sp, conn: sqlite3.Connection) -> None:
     """Fetches recent playback history from Spotify and stores new entries in the DB."""
     print("\nFetching recent playback history from Spotify...")
     cursor = conn.cursor()
@@ -82,7 +89,7 @@ def update_history_db(sp, conn):
         print(f"An unexpected error occurred during history update: {e}")
 
 
-def show_recent_playlists(sp, conn, market_code=None, timezone_str="Europe/Paris"):
+def show_recent_playlists(sp, conn: sqlite3.Connection, market_code: str | None = None, timezone_str: str = "Europe/Paris") -> None:
     """Queries the DB for recently played playlists and displays them."""
     print("\nQuerying database for recently played playlists...")
     cursor = conn.cursor()
@@ -155,7 +162,7 @@ def show_recent_playlists(sp, conn, market_code=None, timezone_str="Europe/Paris
         print(f"An unexpected error occurred in show_recent_playlists: {e}")
 
 
-def sync_all_playlists_and_tracks(sp, conn):
+def sync_all_playlists_and_tracks(sp, conn: sqlite3.Connection) -> None:
     """
     Fetches all user's playlists and their tracks from Spotify,
     and upserts them into the local database. Marks items as 'removed'
@@ -375,7 +382,7 @@ def sync_all_playlists_and_tracks(sp, conn):
         print("WARNING: Some changes might not have been saved.")
 
 
-def export_data_to_file(conn, filename):
+def export_data_to_file(conn: sqlite3.Connection, filename: str) -> None:
     """Exports synced playlists and tracks from the database to the specified file."""
     print(f"\nAttempting to export data to '{filename}'...")
 
